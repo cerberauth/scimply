@@ -1,0 +1,68 @@
+---
+title: PATCH operations
+description: Partially update SCIM resources using RFC 7644 §3.5.2 PATCH semantics.
+---
+
+scimply implements the full RFC 7644 §3.5.2 PATCH specification with atomicity: either all operations succeed or none are applied.
+
+## Request format
+
+```http
+PATCH /scim/v2/Users/123
+Content-Type: application/scim+json
+Authorization: Bearer <token>
+
+{
+  "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+  "Operations": [
+    { "op": "replace", "path": "active", "value": false },
+    { "op": "add", "path": "emails", "value": [{ "type": "home", "value": "home@example.com" }] },
+    { "op": "remove", "path": "phoneNumbers[type eq \"fax\"]" }
+  ]
+}
+```
+
+## Operations
+
+### `add`
+
+Adds a value to a single-valued or multi-valued attribute.
+
+```json
+{ "op": "add", "path": "nickName", "value": "Babs" }
+{ "op": "add", "path": "emails", "value": [{ "type": "other", "value": "other@example.com" }] }
+```
+
+Without `path`, merges the `value` object into the resource:
+
+```json
+{ "op": "add", "value": { "nickName": "Babs", "active": true } }
+```
+
+### `replace`
+
+Replaces a specific attribute or a filtered element of a multi-valued attribute.
+
+```json
+{ "op": "replace", "path": "active", "value": false }
+{ "op": "replace", "path": "name.familyName", "value": "Jensen" }
+{ "op": "replace", "path": "emails[type eq \"work\"].value", "value": "work@example.com" }
+```
+
+### `remove`
+
+Removes an attribute or a filtered element from a multi-valued attribute.
+
+```json
+{ "op": "remove", "path": "nickName" }
+{ "op": "remove", "path": "emails[type eq \"home\"]" }
+{ "op": "remove", "path": "members[value eq \"user-456\"]" }
+```
+
+## Atomicity
+
+All operations in a single PATCH request are applied atomically. If any operation fails (e.g. invalid path, type mismatch), none of the operations take effect and the store returns the original resource unchanged.
+
+## Store implementation
+
+PATCH operations are resolved by the `resource` package before reaching the store. The store receives a pre-computed `[]resource.PatchOp` and is responsible for applying them transactionally. The built-in in-memory store applies all ops atomically in memory. SQL and MongoDB connectors wrap the ops in a transaction.

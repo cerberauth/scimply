@@ -1,0 +1,116 @@
+---
+title: Server options
+description: All WithX functional options for configuring a scimply server.
+---
+
+`server.New` accepts zero or more `Option` values. All options are optional except `WithStore` and `WithSchemaRegistry`.
+
+## Required
+
+### `WithStore(s store.ResourceStore)`
+
+Sets the persistence backend. Must implement `store.ResourceStore`.
+
+```go
+server.WithStore(store.NewMemoryStore())
+```
+
+### `WithSchemaRegistry(reg *schema.Registry)`
+
+Sets the schema registry that controls which resource types are exposed.
+
+```go
+reg := schema.NewRegistry()
+reg.RegisterDefaults()
+server.WithSchemaRegistry(reg)
+```
+
+## Routing
+
+### `WithBasePath(path string)`
+
+Mounts all SCIM endpoints under a URL prefix. Trailing slashes are stripped.
+
+```go
+server.WithBasePath("/scim/v2")
+// Exposes: /scim/v2/Users, /scim/v2/Groups, /scim/v2/ServiceProviderConfig, ...
+```
+
+Default: no prefix (endpoints at `/Users`, `/Groups`, etc.).
+
+## Authentication
+
+### `WithBearerTokenAuth(fn func(token string) (bool, error))`
+
+Validates Bearer tokens. `fn` receives the token without the `Bearer ` prefix.
+
+```go
+server.WithBearerTokenAuth(func(token string) (bool, error) {
+    return token == os.Getenv("SCIM_TOKEN"), nil
+})
+```
+
+### `WithAuthFunc(fn AuthFunc)`
+
+Low-level auth hook — receives the full `*http.Request`. Use this for API key headers, mTLS, or any scheme that needs access to the request beyond the Authorization header.
+
+```go
+server.WithAuthFunc(func(r *http.Request) (bool, error) {
+    return r.Header.Get("X-Api-Key") == "secret", nil
+})
+```
+
+## Pagination
+
+### `WithDefaultPageSize(n int)`
+
+Sets the page size used when the client does not specify `count`. Default: `100`.
+
+### `WithMaxPageSize(n int)`
+
+Caps the page size regardless of what the client requests. Default: `1000`.
+
+## Bulk
+
+### `WithMaxBulkOps(n int)`
+
+Maximum number of operations allowed in a single `POST /Bulk` request. Default: `1000`.
+
+## Logging
+
+### `WithLogger(l *slog.Logger)`
+
+Sets the structured logger used for request logs. Default: `slog.Default()`.
+
+```go
+server.WithLogger(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+```
+
+### `WithAuditLogger(l audit.Logger)`
+
+Sets the audit logger for SCIM mutations (create, replace, patch, delete). The `audit` package provides `audit.NewJSONLogger(w)` and `audit.Noop()`.
+
+```go
+import "github.com/cerberauth/scimply/audit"
+
+server.WithAuditLogger(audit.NewJSONLogger(os.Stdout))
+```
+
+Default: `audit.Noop()`.
+
+## Discovery
+
+### `WithServiceProviderConfig(spc *schema.ServiceProviderConfig)`
+
+Overrides the `ServiceProviderConfig` returned by the discovery endpoint. By default the server generates one that reflects its actual capabilities.
+
+```go
+server.WithServiceProviderConfig(&schema.ServiceProviderConfig{
+    Patch:          schema.Supported{Supported: true},
+    Bulk:           schema.BulkConfig{Supported: false},
+    Filter:         schema.FilterConfig{Supported: true, MaxResults: 200},
+    ChangePassword: schema.Supported{Supported: false},
+    Sort:           schema.Supported{Supported: true},
+    ETag:           schema.Supported{Supported: true},
+})
+```

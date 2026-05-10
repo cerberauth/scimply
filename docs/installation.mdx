@@ -1,0 +1,78 @@
+---
+title: Installation
+description: Add scimply to your Go module.
+sidebar:
+  order: 2
+---
+
+import { Steps, Tabs, TabItem } from '@/components/docs';
+
+## Core library
+
+```sh
+go get github.com/cerberauth/scimply
+```
+
+This pulls in the zero-dependency packages: `schema`, `resource`, `protocol`, `store`, and `server`.
+
+## Database connectors
+
+Install only the connector you need.
+
+<Tabs>
+  <TabItem label="PostgreSQL">
+
+```sh
+go get github.com/cerberauth/scimply/connector/postgres
+```
+
+Requires [pgx/v5](https://github.com/jackc/pgx).
+
+  </TabItem>
+  <TabItem label="MySQL / MariaDB">
+
+```sh
+go get github.com/cerberauth/scimply/connector/mysql
+```
+
+Uses the standard `database/sql` interface with any MySQL-compatible driver.
+
+  </TabItem>
+  <TabItem label="MongoDB">
+
+```sh
+go get github.com/cerberauth/scimply/connector/mongodb
+```
+
+Requires the official [mongo-driver](https://github.com/mongodb/mongo-go-driver).
+
+  </TabItem>
+  <TabItem label="SCIM proxy">
+
+```sh
+go get github.com/cerberauth/scimply/connector/scim
+```
+
+No additional dependencies — forwards requests to an upstream SCIM server over HTTP.
+
+  </TabItem>
+</Tabs>
+
+## From source
+
+<Steps>
+
+1. Clone the repository:
+
+   ```sh
+   git clone https://github.com/cerberauth/scimply.git
+   cd scimply
+   ```
+
+2. Run the tests:
+
+   ```sh
+   go test ./...
+   ```
+
+</Steps>

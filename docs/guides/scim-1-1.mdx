@@ -1,0 +1,51 @@
+---
+title: SCIM 1.1
+description: Serve SCIM 1.1 clients using the scimply conversion layer.
+---
+
+The `v1` package converts between SCIM 1.1 wire format and the internal SCIM 2.0 representation. Resources are translated at the boundary, so the rest of the library (store, filter, PATCH engine) operates on 2.0 objects throughout.
+
+## Key differences handled
+
+| Area | SCIM 1.1 | SCIM 2.0 |
+|---|---|---|
+| Schema URI | `urn:scim:schemas:core:1.0` | `urn:ietf:params:scim:schemas:core:2.0:User` |
+| Service provider endpoint | `/ServiceProviderConfigs` (plural) | `/ServiceProviderConfig` |
+| Error format | `{"Errors": [{"code": "404", "description": "..."}]}` | `{"status": "404", "detail": "..."}` |
+| Filter operators | No `ne`, `ew`, `not`, `[]` | Full operator set |
+| Enterprise extension | Promoted to top-level attributes | `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User` |
+| Manager | `manager.managerId` | `manager.value` |
+
+## Usage
+
+Import the `v1` package and wrap your server with the 1.1 adapter:
+
+```go
+import (
+    "github.com/cerberauth/scimply/schema"
+    "github.com/cerberauth/scimply/server"
+    "github.com/cerberauth/scimply/store"
+    scimv1 "github.com/cerberauth/scimply/v1"
+)
+
+reg := schema.NewRegistry()
+reg.RegisterDefaults()
+
+srv, err := server.New(
+    server.WithStore(store.NewMemoryStore()),
+    server.WithSchemaRegistry(reg),
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Wrap the 2.0 server to handle 1.1 requests at /scim/v1
+v1Handler := scimv1.NewHandler(srv)
+http.Handle("/scim/v1/", v1Handler)
+http.Handle("/scim/v2/", srv)
+log.Fatal(http.ListenAndServe(":8080", nil))
+```
+
+## Filter limitations
+
+SCIM 1.1 clients send a restricted filter grammar. The `v1` adapter rejects requests that use 2.0-only operators (`ne`, `ew`, `not`, value-path `[]`) and returns a 400 with a 1.1-formatted error body.

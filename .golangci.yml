@@ -1,0 +1,25 @@
+version: "2"
+linters:
+  enable:
+    - goconst
+    - gocritic
+    - gosec
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - .+_test.go
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - .+_test.go
+      - examples$

@@ -1,0 +1,64 @@
+---
+title: Store interface
+description: ResourceStore — the central abstraction for SCIM persistence in scimply.
+---
+
+`store.ResourceStore` is the interface every backend must implement. The server delegates all persistence to it.
+
+## Interface
+
+```go
+type ResourceStore interface {
+    Create(ctx context.Context, resourceType string, res *resource.Resource) (*resource.Resource, error)
+    Get(ctx context.Context, resourceType string, id string) (*resource.Resource, error)
+    List(ctx context.Context, resourceType string, params ListParams) (*ListResult, error)
+    Replace(ctx context.Context, resourceType string, id string, res *resource.Resource) (*resource.Resource, error)
+    Patch(ctx context.Context, resourceType string, id string, ops []resource.PatchOp) (*resource.Resource, error)
+    Delete(ctx context.Context, resourceType string, id string) error
+}
+```
+
+## ListParams
+
+```go
+type ListParams struct {
+    Filter             resource.FilterExpression // nil = match all
+    SortBy             string
+    SortOrder          SortOrder                 // SortAscending | SortDescending
+    StartIndex         int                       // 1-based (default: 1)
+    Count              int                       // 0 = server default
+    Attributes         []string
+    ExcludedAttributes []string
+}
+```
+
+## ListResult
+
+```go
+type ListResult struct {
+    Resources         []*resource.Resource
+    TotalResults      int
+    StartIndex        int
+    ItemsPerPage      int
+    NeedsClientFilter bool // set true if Filter was not applied server-side
+}
+```
+
+When `NeedsClientFilter` is `true`, the server re-evaluates `params.Filter` against every resource in `Resources` using the built-in in-process evaluator. This lets simple stores return everything and defer filtering to scimply.
+
+## Sentinel errors
+
+| Sentinel | HTTP status |
+|---|---|
+| `store.ErrNotFound` | 404 Not Found |
+| `store.ErrConflict` | 409 Conflict |
+
+## Built-in stores
+
+| Package | Description |
+|---|---|
+| `store.NewMemoryStore()` | In-memory, thread-safe. Suitable for development and testing. |
+| `connector/postgres` | PostgreSQL via pgx/v5, JSONB data column strategy |
+| `connector/mysql` | MySQL/MariaDB via `database/sql`, JSON column strategy |
+| `connector/mongodb` | MongoDB with BSON filter translation |
+| `connector/scim` | SCIM-to-SCIM proxy — forwards operations to an upstream SCIM server |

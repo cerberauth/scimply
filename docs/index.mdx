@@ -1,0 +1,77 @@
+---
+title: Get Started
+description: scimply — a complete SCIM 2.0 (and 1.1) server library for Go. Drop a SCIM endpoint into any Go service in minutes.
+template: splash
+hero:
+  tagline: Complete SCIM 2.0 server library for Go. RFC 7642, 7643, and 7644 — zero external dependencies in the core.
+  actions:
+    - text: Get started
+      link: ./installation/
+      icon: right-arrow
+      variant: primary
+    - text: Server options
+      link: ./reference/server-options/
+      icon: open-book
+sidebar:
+  order: 1
+---
+
+import { Card, CardGrid, LinkCard } from '@/components/docs';
+
+<CardGrid stagger>
+  <Card title="Full SCIM 2.0" icon="approve-check">
+    RFC 7642, 7643, and 7644 — including filter, PATCH, bulk, sort, pagination, ETags, and discovery endpoints.
+  </Card>
+  <Card title="Zero-dependency core" icon="puzzle">
+    The `schema`, `resource`, `protocol`, `store`, and `server` packages use only the Go standard library.
+  </Card>
+  <Card title="Pluggable backends" icon="setting">
+    In-memory, PostgreSQL, MySQL/MariaDB, MongoDB, and SCIM-to-SCIM proxy — or bring your own store.
+  </Card>
+  <Card title="Compliance test suite" icon="list-format">
+    Reusable black-box suite you can run against any SCIM server, including your own.
+  </Card>
+</CardGrid>
+
+## Quick start
+
+```go
+package main
+
+import (
+    "log"
+    "net/http"
+
+    "github.com/cerberauth/scimply/schema"
+    "github.com/cerberauth/scimply/server"
+    "github.com/cerberauth/scimply/store"
+)
+
+func main() {
+    reg := schema.NewRegistry()
+    reg.RegisterDefaults() // User, Group, EnterpriseUser
+
+    srv, err := server.New(
+        server.WithStore(store.NewMemoryStore()),
+        server.WithSchemaRegistry(reg),
+        server.WithBasePath("/scim/v2"),
+        server.WithBearerTokenAuth(func(token string) (bool, error) {
+            return token == "my-secret-token", nil
+        }),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    log.Fatal(http.ListenAndServe(":8080", srv))
+}
+```
+
+## Explore the docs
+
+<CardGrid>
+  <LinkCard title="Installation" description="Add scimply to your Go module." href="./installation/" />
+  <LinkCard title="Getting started" description="Spin up a SCIM server with the in-memory backend." href="./guides/getting-started/" />
+  <LinkCard title="Server options" description="All WithX options for configuring the server." href="./reference/server-options/" />
+  <LinkCard title="Custom store" description="Implement ResourceStore to connect any backend." href="./guides/custom-store/" />
+</CardGrid>

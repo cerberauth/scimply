@@ -1,0 +1,83 @@
+---
+title: Getting started
+description: Build a SCIM 2.0 server in Go with scimply and the in-memory backend.
+---
+
+This guide walks through the minimal setup to get a SCIM 2.0 server running. It uses the in-memory backend, which is suitable for development and testing.
+
+## 1. Create a schema registry
+
+The registry holds schema definitions and resource type registrations. `RegisterDefaults` adds User, Group, and EnterpriseUser.
+
+```go
+import "github.com/cerberauth/scimply/schema"
+
+reg := schema.NewRegistry()
+reg.RegisterDefaults()
+```
+
+## 2. Create the server
+
+```go
+import (
+    "github.com/cerberauth/scimply/server"
+    "github.com/cerberauth/scimply/store"
+)
+
+srv, err := server.New(
+    server.WithStore(store.NewMemoryStore()),
+    server.WithSchemaRegistry(reg),
+    server.WithBasePath("/scim/v2"),
+    server.WithBearerTokenAuth(func(token string) (bool, error) {
+        return token == "my-secret-token", nil
+    }),
+)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+`server.New` returns an `http.Handler`. Mount it directly with `http.ListenAndServe` or attach it to any existing mux.
+
+## 3. Serve
+
+```go
+log.Fatal(http.ListenAndServe(":8080", srv))
+```
+
+## 4. Try it
+
+Create a user:
+
+```sh
+curl -X POST http://localhost:8080/scim/v2/Users \
+  -H "Authorization: Bearer my-secret-token" \
+  -H "Content-Type: application/scim+json" \
+  -d '{
+    "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+    "userName": "bjensen",
+    "name": { "formatted": "Ms. Barbara J Jensen" },
+    "emails": [{ "value": "bjensen@example.com", "primary": true }],
+    "active": true
+  }'
+```
+
+List users:
+
+```sh
+curl http://localhost:8080/scim/v2/Users \
+  -H "Authorization: Bearer my-secret-token"
+```
+
+Inspect server capabilities:
+
+```sh
+curl http://localhost:8080/scim/v2/ServiceProviderConfig \
+  -H "Authorization: Bearer my-secret-token"
+```
+
+## Next steps
+
+- [Filtering](./filtering/) — query users with RFC 7644 filter expressions
+- [PATCH operations](./patch-operations/) — partial resource updates
+- [Custom store](./custom-store/) — connect a real database
