@@ -1,0 +1,74 @@
+---
+title: API endpoints
+description: HTTP endpoints exposed by a scimply server.
+---
+
+All paths below assume `WithBasePath("/scim/v2")`. Adjust accordingly if you use a different base path or none at all.
+
+## Discovery
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/scim/v2/ServiceProviderConfig` | Server capabilities and supported features |
+| `GET` | `/scim/v2/ResourceTypes` | Registered resource type definitions |
+| `GET` | `/scim/v2/Schemas` | All schema definitions |
+| `GET` | `/scim/v2/Schemas/{id}` | Single schema by URN |
+
+## Users
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/scim/v2/Users` | List users (supports `filter`, `sortBy`, `sortOrder`, `startIndex`, `count`, `attributes`, `excludedAttributes`) |
+| `POST` | `/scim/v2/Users` | Create a user |
+| `GET` | `/scim/v2/Users/{id}` | Get a user by ID |
+| `PUT` | `/scim/v2/Users/{id}` | Full replacement |
+| `PATCH` | `/scim/v2/Users/{id}` | Partial update |
+| `DELETE` | `/scim/v2/Users/{id}` | Delete a user |
+| `POST` | `/scim/v2/Users/.search` | Query via request body (avoids URL length limits) |
+
+## Groups
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/scim/v2/Groups` | List groups |
+| `POST` | `/scim/v2/Groups` | Create a group |
+| `GET` | `/scim/v2/Groups/{id}` | Get a group by ID |
+| `PUT` | `/scim/v2/Groups/{id}` | Full replacement |
+| `PATCH` | `/scim/v2/Groups/{id}` | Partial update |
+| `DELETE` | `/scim/v2/Groups/{id}` | Delete a group |
+| `POST` | `/scim/v2/Groups/.search` | Query via request body |
+
+## Bulk
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/scim/v2/Bulk` | Execute multiple operations in a single request |
+
+## Query parameters for list endpoints
+
+| Parameter | Description |
+|---|---|
+| `filter` | RFC 7644 filter expression |
+| `sortBy` | Attribute name to sort by |
+| `sortOrder` | `ascending` (default) or `descending` |
+| `startIndex` | 1-based offset into the result set (default: `1`) |
+| `count` | Maximum number of resources to return |
+| `attributes` | Comma-separated list of attributes to include |
+| `excludedAttributes` | Comma-separated list of attributes to omit |
+
+## Content types
+
+Requests with a body must use `Content-Type: application/scim+json`. The server also accepts `application/json`. Responses always use `Content-Type: application/scim+json`.
+
+## Error responses
+
+Errors follow the RFC 7644 error schema:
+
+```json
+{
+  "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"],
+  "status": "404",
+  "scimType": "noTarget",
+  "detail": "Resource not found: user-123"
+}
+```

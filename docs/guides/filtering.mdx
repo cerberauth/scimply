@@ -1,0 +1,72 @@
+---
+title: Filtering
+description: Query SCIM resources using RFC 7644 filter expressions.
+---
+
+scimply includes a recursive-descent filter parser that implements the full RFC 7644 ABNF grammar. Filters are parsed server-side and passed to the store as a `resource.FilterExpression`.
+
+## Basic syntax
+
+```
+GET /scim/v2/Users?filter=<expression>
+```
+
+| Operator | Example | Description |
+|---|---|---|
+| `eq` | `userName eq "bjensen"` | Equal |
+| `ne` | `active ne false` | Not equal |
+| `co` | `emails.value co "@example.com"` | Contains |
+| `sw` | `userName sw "b"` | Starts with |
+| `ew` | `userName ew "sen"` | Ends with |
+| `gt` | `meta.lastModified gt "2024-01-01T00:00:00Z"` | Greater than |
+| `ge` | `meta.lastModified ge "2024-01-01T00:00:00Z"` | Greater than or equal |
+| `lt` | `meta.lastModified lt "2024-01-01T00:00:00Z"` | Less than |
+| `le` | `meta.lastModified le "2024-01-01T00:00:00Z"` | Less than or equal |
+| `pr` | `phoneNumbers pr` | Attribute is present |
+
+## Compound expressions
+
+```
+GET /scim/v2/Users?filter=active eq true and userType eq "Employee"
+GET /scim/v2/Users?filter=active eq true or userType eq "Contractor"
+GET /scim/v2/Users?filter=not (userName eq "bjensen")
+```
+
+## Value path filters (attribute sub-filters)
+
+Use square brackets to filter within a multi-valued attribute:
+
+```
+GET /scim/v2/Users?filter=emails[type eq "work" and value co "@example.com"]
+GET /scim/v2/Groups?filter=members[value eq "user-123"]
+```
+
+## Search via POST
+
+For long or complex filters, use the `.search` endpoint to avoid URL length limits:
+
+```sh
+POST /scim/v2/Users/.search
+Content-Type: application/scim+json
+
+{
+  "schemas": ["urn:ietf:params:scim:api:messages:2.0:SearchRequest"],
+  "filter": "emails[type eq \"work\"] and active eq true",
+  "sortBy": "userName",
+  "sortOrder": "ascending",
+  "startIndex": 1,
+  "count": 50
+}
+```
+
+## Sorting and pagination
+
+```
+GET /scim/v2/Users?sortBy=userName&sortOrder=ascending&startIndex=1&count=25
+```
+
+`startIndex` is 1-based. The response includes `totalResults`, `startIndex`, and `itemsPerPage`.
+
+## Store implementation notes
+
+The server parses the filter into a `resource.FilterExpression` and passes it via `store.ListParams.Filter`. Stores that cannot push the filter to the database may set `ListResult.NeedsClientFilter = true` — the server will then apply the filter in-process using the built-in evaluator.

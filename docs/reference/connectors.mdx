@@ -1,0 +1,260 @@
+---
+title: Connectors
+description: Database and proxy connectors for scimply.
+---
+
+Each connector implements `store.ResourceStore` and can be passed directly to `server.WithStore`.
+
+## In-memory
+
+No import required — part of the core `store` package.
+
+```go
+import "github.com/cerberauth/scimply/store"
+
+store.NewMemoryStore()
+```
+
+Suitable for development and tests. State is lost when the process exits.
+
+## PostgreSQL
+
+```go
+import "github.com/cerberauth/scimply/connector/postgres"
+
+pgStore, err := postgres.New(
+    postgres.WithDSN("postgres://user:pass@localhost:5432/scimdb"),
+    postgres.WithAutoMigrate(true),  // creates tables on startup
+    postgres.WithTablePrefix("scim_"),
+    postgres.WithSchemaRegistry(reg),
+)
+if err != nil { log.Fatal(err) }
+defer pgStore.Close(context.Background())
+
+if err := pgStore.Init(context.Background()); err != nil { log.Fatal(err) }
+```
+
+Resources are stored in a JSONB `data` column. The filter-to-SQL translator handles most RFC 7644 operators natively; complex value-path filters fall back to in-process evaluation.
+
+### Options
+
+| Option | Description |
+|---|---|
+| `WithDSN(dsn string)` | PostgreSQL connection string |
+| `WithAutoMigrate(bool)` | Create tables on `Init` if they do not exist (skipped for column-mode types) |
+| `WithTablePrefix(prefix string)` | Prefix for scimply-managed tables (default: `scim_`) |
+| `WithSchemaRegistry(reg)` | Registry used to resolve resource types |
+| `WithTableName(resourceType, table string)` | Point a resource type at a specific table; stays in JSON mode unless field mappings are also set |
+| `WithFieldMapping(resourceType, scimAttr, column string)` | Map a SCIM attribute to a column in the primary table; activates column mode |
+| `WithTableFieldMapping(resourceType, scimAttr, table, column string)` | Map a SCIM attribute to a column in a joined table |
+| `WithJoin(resourceType string, join JoinDef)` | Add a JOIN definition (required when any mapping targets a non-primary table) |
+| `WithResourceConfig(resourceType string, cfg ResourceTableConfig)` | All-in-one: set table, field mappings, and joins at once |
+| `WithMaxConns(n int)` | Maximum pool connections (default: 10) |
+| `WithMinConns(n int)` | Minimum pool connections (default: 2) |
+| `WithConnTimeout(d time.Duration)` | Connection idle timeout (default: 30s) |
+
+`Pool() *pgxpool.Pool` — returns the raw connection pool for custom queries (available after `Init`).
+
+### Column mode
+
+When `FieldMappings` is set for a resource type the connector switches from JSON-blob storage to **column mode**: each SCIM attribute is read and written as an individual column. Columns may live in different tables — declare the joins with `JoinDef`.
+
+```go
+import (
+    sqlconn "github.com/cerberauth/scimply/connector/sql"
+    "github.com/cerberauth/scimply/connector/postgres"
+)
+
+postgres.WithResourceConfig("User", postgres.ResourceTableConfig{
+    Table: "accounts",
+    FieldMappings: map[string]sqlconn.ColumnRef{
+        "id":                {Column: "id"},
+        "userName":          {Column: "email"},
+        "active":            {Column: "is_active"},
+        "meta.created":      {Column: "created_at"},
+        "meta.lastModified": {Column: "updated_at"},
+        // Attribute in a joined table:
+        "name.givenName":  {Table: "profiles", Column: "first_name"},
+        "name.familyName": {Table: "profiles", Column: "last_name"},
+    },
+    Joins: []postgres.JoinDef{{
+        Table:      "profiles",
+        Condition:  "profiles.account_id = accounts.id",
+        JoinType:   "LEFT",
+        ForeignKey: "account_id", // used when writing to the joined table
+        DeleteJoin: true,          // DELETE profiles row before accounts row
+    }},
+})
+```
+
+`JoinDef` fields:
+
+| Field | Description |
+|---|---|
+| `Table` | Table name to join |
+| `Alias` | Optional SQL alias |
+| `Condition` | Raw `ON` expression |
+| `JoinType` | `"LEFT"` (default), `"INNER"`, `"RIGHT"` |
+| `ForeignKey` | Column in the joined table referencing the primary table's id; required for writes |
+| `DeleteJoin` | When true, delete from this table before deleting from the primary table |
+
+## MySQL / MariaDB
+
+```go
+import "github.com/cerberauth/scimply/connector/mysql"
+
+myStore, err := mysql.New(
+    mysql.WithDSN("user:pass@tcp(localhost:3306)/scimdb?parseTime=true"),
+    mysql.WithAutoMigrate(true),
+)
+```
+
+Uses `database/sql` with a JSON column strategy. Any MySQL-compatible driver works (e.g. `go-sql-driver/mysql`).
+
+### Options
+
+| Option | Description |
+|---|---|
+| `WithDSN(dsn string)` | MySQL/MariaDB DSN |
+| `WithAutoMigrate(bool)` | Create tables on startup |
+| `WithSchemaRegistry(reg)` | Registry used to resolve resource types |
+| `WithTableName(resourceType, table string)` | Point a resource type at a specific table; stays in JSON mode unless field mappings are also set |
+| `WithFieldMapping(resourceType, scimAttr, column string)` | Map a SCIM attribute to a column in the primary table; activates column mode |
+| `WithTableFieldMapping(resourceType, scimAttr, table, column string)` | Map a SCIM attribute to a column in a joined table |
+| `WithJoin(resourceType string, join JoinDef)` | Add a JOIN definition (required when any mapping targets a non-primary table) |
+| `WithResourceConfig(resourceType string, cfg ResourceTableConfig)` | All-in-one: set table, field mappings, and joins at once |
+| `WithMaxConns(n int)` | Maximum open connections (default: 10) |
+| `WithConnTimeout(d time.Duration)` | Connection idle timeout (default: 30s) |
+
+`DB() *sql.DB` — returns the raw database handle for custom queries (available after `Init`).
+
+### Column mode
+
+Same dual-mode semantics as PostgreSQL: set `FieldMappings` on a `ResourceTableConfig` to switch a resource type to column mode. `JoinDef` and `ResourceTableConfig` types are identical to the postgres connector. `AutoMigrate` is skipped for column-mode resource types.
+
+```go
+import (
+    sqlconn "github.com/cerberauth/scimply/connector/sql"
+    "github.com/cerberauth/scimply/connector/mysql"
+)
+
+mysql.WithResourceConfig("User", mysql.ResourceTableConfig{
+    Table: "accounts",
+    FieldMappings: map[string]sqlconn.ColumnRef{
+        "id":                {Column: "id"},
+        "userName":          {Column: "email"},
+        "active":            {Column: "is_active"},
+        "meta.created":      {Column: "created_at"},
+        "meta.lastModified": {Column: "updated_at"},
+        "name.givenName":  {Table: "profiles", Column: "first_name"},
+        "name.familyName": {Table: "profiles", Column: "last_name"},
+    },
+    Joins: []mysql.JoinDef{{
+        Table:      "profiles",
+        Condition:  "profiles.account_id = accounts.id",
+        JoinType:   "LEFT",
+        ForeignKey: "account_id",
+        DeleteJoin: true,
+    }},
+})
+```
+
+Joined-table upserts use `INSERT ... ON DUPLICATE KEY UPDATE`, which requires a unique or primary key constraint on the foreign key column.
+
+## MongoDB
+
+```go
+import "github.com/cerberauth/scimply/connector/mongodb"
+
+mgStore, err := mongodb.New(
+    mongodb.WithURI("mongodb://localhost:27017"),
+    mongodb.WithDatabase("scimdb"),
+    mongodb.WithAutoMigrate(true),
+)
+```
+
+Filters are translated to BSON. Value-path filters fall back to in-process evaluation.
+
+### Options
+
+| Option | Description |
+|---|---|
+| `WithURI(uri string)` | MongoDB connection URI |
+| `WithDatabase(name string)` | Database name |
+| `WithAutoMigrate(bool)` | Create collections and indexes on startup |
+| `WithSchemaRegistry(reg)` | Registry used to resolve resource types |
+| `WithCollectionPrefix(prefix string)` | Prefix for scimply-managed collections (default: `scim_`) |
+| `WithTimeout(d time.Duration)` | Operation timeout (default: 30s) |
+| `WithCollectionName(resourceType, collection string)` | Point a resource type at a specific collection |
+| `WithTableName(resourceType, collection string)` | Alias for `WithCollectionName` |
+| `WithFieldMapping(resourceType, scimAttr, bsonPath string)` | Map a SCIM attribute to a BSON field path; activates field-mapping mode |
+| `WithLookup(resourceType string, lookup LookupConfig)` | Add a cross-collection `$lookup` aggregation stage |
+| `WithResourceConfig(resourceType string, cfg ResourceCollectionConfig)` | All-in-one: set collection, field mappings, and lookups at once |
+
+`Database() *mongo.Database` — returns the raw database handle for custom queries (available after `Init`).
+
+### Field-mapping mode
+
+When `FieldMappings` is set for a resource type the connector reads and writes individual BSON fields instead of using SCIM attribute names directly. Cross-collection lookups use MongoDB's `$lookup` aggregation stage.
+
+```go
+import "github.com/cerberauth/scimply/connector/mongodb"
+
+mongodb.WithResourceConfig("User", mongodb.ResourceCollectionConfig{
+    Collection: "users",
+    FieldMappings: map[string]string{
+        "id":       "_id",
+        "userName": "email",
+        "active":   "account.active",
+    },
+    // Cross-collection lookup for 1:1 profile documents:
+    Lookups: []mongodb.LookupConfig{{
+        From:         "profiles",
+        LocalField:   "_id",
+        ForeignField: "userId",
+        As:           "profile",
+        FieldMappings: map[string]string{
+            "name.givenName":  "profile.firstName",
+            "name.familyName": "profile.lastName",
+        },
+    }},
+})
+```
+
+`LookupConfig` fields:
+
+| Field | Description |
+|---|---|
+| `From` | Source collection name |
+| `LocalField` | Field in the current document used for matching |
+| `ForeignField` | Field in the source collection used for matching |
+| `As` | Output field name in the aggregation result |
+| `FieldMappings` | SCIM attribute path → `"As.fieldname"` path in the joined document |
+
+`AutoMigrate` (index creation) is skipped for resource types with `FieldMappings` set.
+
+## SCIM-to-SCIM proxy
+
+Forwards all SCIM operations to an upstream SCIM 2.0 server. Useful for adding an auth layer, logging, or schema normalization in front of an existing SCIM endpoint.
+
+```go
+import scimclient "github.com/cerberauth/scimply/connector/scim"
+
+upstream, err := scimclient.New(
+    scimclient.WithBaseURL("https://api.example.com/scim/v2"),
+    scimclient.WithBearerToken("upstream-token"),
+)
+if err != nil { log.Fatal(err) }
+
+// upstream implements store.ResourceStore
+srv, _ := server.New(server.WithStore(upstream), ...)
+```
+
+Retries on HTTP 429 (rate limit) with exponential back-off.
+
+### Options
+
+| Option | Description |
+|---|---|
+| `WithBaseURL(url string)` | Base URL of the upstream SCIM server |
+| `WithBearerToken(token string)` | Bearer token sent to the upstream server |

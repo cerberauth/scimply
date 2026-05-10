@@ -1,0 +1,55 @@
+---
+title: Compliance testing
+description: Run the scimply compliance suite against any SCIM 2.0 server.
+---
+
+The `compliance` package provides a black-box test suite that validates RFC 7644 behaviour. You can run it against any SCIM server — including servers not built with scimply.
+
+## Run against your own server
+
+```go
+import (
+    "testing"
+
+    "github.com/cerberauth/scimply/compliance"
+)
+
+func TestSCIMCompliance(t *testing.T) {
+    // Start your server however you normally do in tests.
+    srv := startMyServer(t)
+
+    compliance.RunSuite(t, compliance.SuiteConfig{
+        BaseURL:    srv.URL + "/scim/v2",
+        AuthHeader: "Bearer test-token",
+    })
+}
+```
+
+`compliance.RunSuite` calls `t.Run` for each test case, so failures are reported individually.
+
+## Run against an external server
+
+Point `BaseURL` at any reachable SCIM endpoint:
+
+```go
+func TestExternalServer(t *testing.T) {
+    compliance.RunSuite(t, compliance.SuiteConfig{
+        BaseURL:    "https://staging.example.com/scim/v2",
+        AuthHeader: "Bearer " + os.Getenv("SCIM_TOKEN"),
+    })
+}
+```
+
+## What the suite covers
+
+- Discovery endpoints: `ServiceProviderConfig`, `ResourceTypes`, `Schemas`
+- Create, read, replace, delete for User and Group
+- List with filter, sort, and pagination
+- PATCH add / replace / remove
+- Bulk operations
+- Error responses: 404, 409, 422 (invalid filter)
+- ETag support
+
+## Selecting tests
+
+Individual test cases can be skipped by wrapping `RunSuite` in a subtest and using standard Go test filtering (`-run`).
