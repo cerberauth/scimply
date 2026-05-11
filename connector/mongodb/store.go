@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/cerberauth/scimply/resource"
 	"github.com/cerberauth/scimply/store"
@@ -47,7 +47,7 @@ func (s *Store) Init(ctx context.Context) error {
 		clientOpts.SetServerSelectionTimeout(s.cfg.timeout)
 	}
 
-	client, err := mongo.Connect(ctx, clientOpts)
+	client, err := mongo.Connect(clientOpts)
 	if err != nil {
 		return fmt.Errorf("mongodb store: connect: %w", err)
 	}
