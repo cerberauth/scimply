@@ -1,0 +1,22 @@
+FROM golang:1.26-bookworm AS builder
+
+WORKDIR /go/src/github.com/cerberauth/scimply
+
+COPY go.mod go.mod
+COPY go.sum go.sum
+
+ENV CGO_ENABLED 0
+ENV GO111MODULE on
+
+RUN go mod download
+
+COPY . .
+
+RUN go build -o /usr/bin/scimply .
+
+FROM gcr.io/distroless/static-debian12:nonroot AS runner
+
+COPY --from=builder --chown=nonroot:nonroot /usr/bin/scimply /usr/bin/scimply
+
+ENTRYPOINT ["scimply"]
+CMD ["scimply"]
