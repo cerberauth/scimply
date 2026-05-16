@@ -7,3 +7,4 @@ ARG TARGETVARIANT
 COPY --chown=nonroot:nonroot ${TARGETOS}/${TARGETARCH}${TARGETVARIANT:+/$TARGETVARIANT}/scimply /usr/bin/scimply
 
 ENTRYPOINT ["/usr/bin/scimply"]
+CMD ["serve"]

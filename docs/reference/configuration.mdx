@@ -1,0 +1,121 @@
+---
+title: Configuration reference
+description: Full YAML configuration reference for the scimply standalone server.
+---
+
+The `scimply serve` command loads a YAML config file (default `scimply.yaml`, override with `-c`).
+
+All fields are optional — omitted fields use the defaults listed below.
+
+## Server
+
+```yaml
+server:
+  addr: ":8080"              # listen address
+  base_path: "/scim/v2"      # URL prefix for all SCIM endpoints
+  read_timeout: "5s"
+  write_timeout: "10s"
+  shutdown_timeout: "30s"    # graceful shutdown window on SIGINT/SIGTERM
+  default_page_size: 100
+  max_page_size: 1000
+  max_bulk_ops: 100
+  tls:
+    cert_file: ""            # path to TLS certificate (PEM)
+    key_file: ""             # path to TLS private key (PEM)
+```
+
+TLS is enabled when both `cert_file` and `key_file` are set.
+
+## Logging
+
+```yaml
+log:
+  level: "info"    # debug | info | warn | error
+  format: "json"   # json | text
+```
+
+Logs are written to stderr.
+
+## Audit logging
+
+```yaml
+audit:
+  type: "none"       # none | json
+  output: "stdout"   # stdout | stderr | /path/to/file.ndjson
+```
+
+When `type` is `json`, each SCIM operation is written as an NDJSON line. Output defaults to stdout; set a file path to write to disk.
+
+## Authentication
+
+```yaml
+auth:
+  type: "none"         # none | bearer_token
+  tokens:              # list of accepted bearer tokens (bearer_token only)
+    - "secret-token-1"
+    - "secret-token-2"
+```
+
+## Store
+
+```yaml
+store:
+  type: "memory"   # memory | postgres | mysql | mongodb | scim
+```
+
+### In-memory (default)
+
+No additional fields. Data is lost on restart.
+
+### PostgreSQL
+
+```yaml
+store:
+  type: "postgres"
+  postgres:
+    dsn: "postgres://user:pass@localhost:5432/scimdb"
+    table_prefix: "scim_"
+    max_conns: 10
+    min_conns: 1
+    conn_timeout: "30s"
+    auto_migrate: true
+```
+
+### MySQL / MariaDB
+
+```yaml
+store:
+  type: "mysql"
+  mysql:
+    dsn: "user:pass@tcp(localhost:3306)/scimdb?parseTime=true"
+    table_prefix: "scim_"
+    max_conns: 10
+    auto_migrate: true
+```
+
+### MongoDB
+
+```yaml
+store:
+  type: "mongodb"
+  mongodb:
+    uri: "mongodb://localhost:27017"
+    database: "scimdb"
+    collection_prefix: "scim_"
+    timeout: "30s"
+    auto_migrate: true
+```
+
+### SCIM proxy
+
+Forwards all operations to an upstream SCIM server.
+
+```yaml
+store:
+  type: "scim"
+  scim:
+    base_url: "https://upstream.example.com/scim/v2"
+    token: "upstream-bearer-token"
+    version: ""    # set to "v1" or "1.1" for a SCIM 1.1 upstream
+    timeout: "30s"
+```
