@@ -1,0 +1,111 @@
+---
+title: Running the standalone server
+description: Run scimply as a production-ready SCIM 2.0 server from a YAML config file.
+---
+
+scimply ships as a standalone binary alongside the Go library. The binary provides a `serve` command that boots a production HTTP server from a YAML config file — no Go code required.
+
+## Install
+
+**Homebrew:**
+
+```sh
+brew install cerberauth/tap/scimply
+```
+
+**Docker:**
+
+```sh
+docker pull ghcr.io/cerberauth/scimply
+```
+
+**Go install:**
+
+```sh
+go install github.com/cerberauth/scimply/cmd/scimply@latest
+```
+
+Or download a pre-built binary from the [GitHub releases page](https://github.com/cerberauth/scimply/releases).
+
+## Write a config file
+
+Create `scimply.yaml`:
+
+```yaml
+server:
+  addr: ":8080"
+  base_path: "/scim/v2"
+
+auth:
+  type: bearer_token
+  tokens:
+    - "my-secret-token"
+
+store:
+  type: memory
+```
+
+This starts an in-memory server with bearer token auth. See the [configuration reference](../reference/configuration/) for all options.
+
+## Start the server
+
+```sh
+scimply serve
+```
+
+By default, scimply looks for `scimply.yaml` in the current directory. Use `-c` to specify a different path:
+
+```sh
+scimply serve -c /etc/scimply/config.yaml
+```
+
+The server logs to stderr and exits cleanly on SIGINT or SIGTERM.
+
+## Docker example
+
+```sh
+docker run --rm \
+  -p 8080:8080 \
+  -v $(pwd)/scimply.yaml:/etc/scimply/config.yaml \
+  ghcr.io/cerberauth/scimply \
+  serve -c /etc/scimply/config.yaml
+```
+
+## Production config example
+
+```yaml
+server:
+  addr: ":8443"
+  base_path: "/scim/v2"
+  read_timeout: "10s"
+  write_timeout: "30s"
+  shutdown_timeout: "30s"
+  tls:
+    cert_file: "/etc/certs/server.crt"
+    key_file: "/etc/certs/server.key"
+
+log:
+  level: "info"
+  format: "json"
+
+audit:
+  type: "json"
+  output: "/var/log/scimply/audit.ndjson"
+
+auth:
+  type: "bearer_token"
+  tokens:
+    - "prod-token-abc"
+
+store:
+  type: "postgres"
+  postgres:
+    dsn: "postgres://scim:secret@db:5432/scimdb"
+    table_prefix: "scim_"
+    auto_migrate: true
+```
+
+## Next steps
+
+- [Configuration reference](../reference/configuration/) — all fields and defaults
+- [Connectors](../reference/connectors/) — field mapping for existing databases

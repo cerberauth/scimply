@@ -65,6 +65,38 @@ func main() {
 }
 ```
 
+## Standalone Server
+
+scimply also ships as a ready-to-run binary. No Go code needed — point it at a YAML config file and start serving SCIM.
+
+```sh
+# install
+brew install cerberauth/tap/scimply
+# or: go install github.com/cerberauth/scimply/cmd/scimply@latest
+
+# create scimply.yaml
+cat > scimply.yaml <<EOF
+server:
+  addr: ":8080"
+  base_path: "/scim/v2"
+
+auth:
+  type: bearer_token
+  tokens:
+    - "my-secret-token"
+
+store:
+  type: memory
+EOF
+
+# run
+scimply serve
+```
+
+Use `-c` to pass a custom config path: `scimply serve -c /etc/scimply/config.yaml`.
+
+See the [configuration reference](https://cerberauth.com/docs/scimply/reference/configuration/) for all options (store backends, TLS, audit logging, etc.).
+
 ## API Endpoints
 
 | Method | Path | Description |

@@ -22,6 +22,7 @@ metadata:
 
 builds:
   - id: scimply
+    main: ./cmd
     binary: scimply
     env:
       - CGO_ENABLED=0
