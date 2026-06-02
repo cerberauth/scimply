@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/cerberauth/scimply/audit"
 	"github.com/cerberauth/scimply/schema"
 	"github.com/cerberauth/scimply/store"
@@ -23,6 +25,7 @@ type config struct {
 	maxBulkOps      int
 	defaultPageSize int
 	maxPageSize     int
+	opsCounter      metric.Int64Counter
 }
 
 type Option func(*config)

@@ -50,7 +50,7 @@ func NewRootCmd(projectVersion, commit, date string) (cmd *cobra.Command) {
 		},
 	}
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.AddCommand(serve.NewServeCmd())
+	rootCmd.AddCommand(serve.NewServeCmd(projectVersion, commit, date))
 
 	rootCmd.PersistentFlags().BoolVarP(&sqaOptOut, "sqa-opt-out", "", false, "Opt out of sending anonymous usage statistics and crash reports to help improve the tool")
 

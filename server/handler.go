@@ -7,6 +7,10 @@ import (
 	"net/url"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/cerberauth/scimply/audit"
 	"github.com/cerberauth/scimply/protocol"
 	"github.com/cerberauth/scimply/resource"
@@ -14,6 +18,10 @@ import (
 )
 
 func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request, resourceType string) {
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("scim.resource_type", resourceType),
+		attribute.String("scim.operation", "create"),
+	)
 	var body map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		protocol.NewSCIMError(http.StatusBadRequest, protocol.ErrTypeInvalidSyntax, "invalid JSON body: "+err.Error()).Write(w)
@@ -41,6 +49,11 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request, resourceTy
 }
 
 func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, resourceType, id string) {
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("scim.resource_type", resourceType),
+		attribute.String("scim.operation", "read"),
+		attribute.String("scim.resource_id", id),
+	)
 	res, err := s.cfg.store.Get(r.Context(), resourceType, id)
 	if err != nil {
 		scimErr := protocol.ErrorFromStoreError(err)
@@ -60,6 +73,10 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, resourceType,
 }
 
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request, resourceType string) {
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("scim.resource_type", resourceType),
+		attribute.String("scim.operation", "list"),
+	)
 	params := protocol.ParseListParams(r)
 
 	if r.Method == http.MethodPost && r.Body != nil {
@@ -142,6 +159,11 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request, resourceType
 }
 
 func (s *Server) handleReplace(w http.ResponseWriter, r *http.Request, resourceType, id string) {
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("scim.resource_type", resourceType),
+		attribute.String("scim.operation", "replace"),
+		attribute.String("scim.resource_id", id),
+	)
 	var body map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		protocol.NewSCIMError(http.StatusBadRequest, protocol.ErrTypeInvalidSyntax, "invalid JSON body: "+err.Error()).Write(w)
@@ -169,6 +191,11 @@ func (s *Server) handleReplace(w http.ResponseWriter, r *http.Request, resourceT
 }
 
 func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request, resourceType, id string) {
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("scim.resource_type", resourceType),
+		attribute.String("scim.operation", "patch"),
+		attribute.String("scim.resource_id", id),
+	)
 	var body map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		protocol.NewSCIMError(http.StatusBadRequest, protocol.ErrTypeInvalidSyntax, "invalid JSON body: "+err.Error()).Write(w)
@@ -202,6 +229,11 @@ func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request, resourceTyp
 }
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request, resourceType, id string) {
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("scim.resource_type", resourceType),
+		attribute.String("scim.operation", "delete"),
+		attribute.String("scim.resource_id", id),
+	)
 	err := s.cfg.store.Delete(r.Context(), resourceType, id)
 	if err != nil {
 		scimErr := protocol.ErrorFromStoreError(err)
@@ -224,6 +256,11 @@ func (s *Server) logAudit(r *http.Request, op audit.Operation, resourceType, res
 		RequestID:    r.Header.Get("X-Request-ID"),
 	}
 	_ = s.cfg.auditLogger.Log(r.Context(), event)
+	s.cfg.opsCounter.Add(r.Context(), 1, metric.WithAttributes(
+		attribute.String("scim.operation", string(op)),
+		attribute.String("scim.resource_type", resourceType),
+		attribute.Int("http.response.status_code", statusCode),
+	))
 }
 
 func httpStatus(e *protocol.SCIMError) int {

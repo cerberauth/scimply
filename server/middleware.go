@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/cerberauth/scimply/protocol"
 )
 
@@ -114,4 +116,13 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 		rw.written = true
 	}
 	return rw.ResponseWriter.Write(b)
+}
+
+func otelMiddleware(next http.Handler) http.Handler {
+	return otelhttp.NewHandler(next, "scimply",
+		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+			return r.Method + " " + r.URL.Path
+		}),
+		otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
+	)
 }

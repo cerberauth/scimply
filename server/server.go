@@ -7,13 +7,19 @@ import (
 	"net/http"
 	"strings"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/cerberauth/scimply/audit"
 	"github.com/cerberauth/scimply/protocol"
 	"github.com/cerberauth/scimply/schema"
 )
 
 type Server struct {
-	cfg config
+	cfg     config
+	handler http.Handler
 }
 
 func New(opts ...Option) (*Server, error) {
@@ -42,7 +48,22 @@ func New(opts ...Option) (*Server, error) {
 		cfg.spConfig = defaultServiceProviderConfig(cfg)
 	}
 
-	return &Server{cfg: cfg}, nil
+	meter := otel.Meter("github.com/cerberauth/scimply")
+	cfg.opsCounter, _ = meter.Int64Counter("scim.operations.total",
+		metric.WithDescription("Total number of SCIM operations"),
+		metric.WithUnit("{operation}"),
+	)
+
+	s := &Server{cfg: cfg}
+	s.handler = chain(
+		http.HandlerFunc(s.route),
+		recoveryMiddleware,
+		contentTypeMiddleware,
+		s.authMiddleware,
+		s.loggingMiddleware,
+		otelMiddleware,
+	)
+	return s, nil
 }
 
 func defaultServiceProviderConfig(cfg config) *schema.ServiceProviderConfig {
@@ -57,14 +78,7 @@ func defaultServiceProviderConfig(cfg config) *schema.ServiceProviderConfig {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h := chain(
-		http.HandlerFunc(s.route),
-		recoveryMiddleware,
-		contentTypeMiddleware,
-		s.authMiddleware,
-		s.loggingMiddleware,
-	)
-	h.ServeHTTP(w, r)
+	s.handler.ServeHTTP(w, r)
 }
 
 func (s *Server) route(w http.ResponseWriter, r *http.Request) {
@@ -138,6 +152,10 @@ func (s *Server) routeResource(w http.ResponseWriter, r *http.Request, endpoint,
 		return
 	}
 	resourceType := rt.Name
+
+	if labeler, ok := otelhttp.LabelerFromContext(r.Context()); ok {
+		labeler.Add(attribute.String("scim.resource_type", resourceType))
+	}
 
 	if rest == "" {
 		switch r.Method {
