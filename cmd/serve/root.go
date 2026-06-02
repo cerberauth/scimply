@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -10,6 +11,10 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/cerberauth/x/otelx"
+	"github.com/spf13/cobra"
+	"go.opentelemetry.io/contrib/bridges/otelslog"
 
 	"github.com/cerberauth/scimply/audit"
 	"github.com/cerberauth/scimply/config"
@@ -21,20 +26,18 @@ import (
 	"github.com/cerberauth/scimply/schema"
 	"github.com/cerberauth/scimply/server"
 	"github.com/cerberauth/scimply/store"
-	"github.com/spf13/cobra"
 )
 
-var configFile string
-
-func NewServeCmd() (serveCmd *cobra.Command) {
-	serveCmd = &cobra.Command{
+func NewServeCmd(version, commit, date string) *cobra.Command {
+	var configFile string
+	serveCmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Start the SCIM server",
-		RunE:  runServe,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runServe(cmd, configFile, version, commit, date)
+		},
 	}
-
 	serveCmd.Flags().StringVarP(&configFile, "config", "c", "scimply.yaml", "path to config file")
-
 	return serveCmd
 }
 
@@ -42,10 +45,32 @@ type storeCloser interface {
 	Close(ctx context.Context) error
 }
 
-func runServe(cmd *cobra.Command, _ []string) error {
+func runServe(cmd *cobra.Command, configFile, version, commit, date string) error {
 	cfg, err := config.Load(configFile)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
+	}
+
+	xOpts := []otelx.Option{
+		otelx.WithCommit(commit),
+		otelx.WithBuildDate(date),
+	}
+	if cfg.Telemetry.Endpoint != "" {
+		xOpts = append(xOpts, otelx.WithEndpoint(cfg.Telemetry.Endpoint))
+	}
+	if cfg.Telemetry.Headers != nil {
+		xOpts = append(xOpts, otelx.WithHeaders(cfg.Telemetry.Headers))
+	}
+	otelShutdown, otelErr := otelx.New(cmd.Context(), "scimply", version, xOpts...)
+	if otelErr != nil {
+		otelShutdown = nil
+	}
+	if otelShutdown != nil {
+		defer func() {
+			shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = otelShutdown(shutCtx)
+		}()
 	}
 
 	logger := buildLogger(cfg.Log)
@@ -69,7 +94,7 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	reg.RegisterDefaults()
 
 	opts := []server.Option{
-		server.WithStore(st),
+		server.WithStore(store.NewTracingStore(st)),
 		server.WithSchemaRegistry(reg),
 		server.WithBasePath(cfg.Server.BasePath),
 		server.WithLogger(logger),
@@ -129,6 +154,45 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
+type multiHandler []slog.Handler
+
+func (m multiHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	for _, h := range m {
+		if h.Enabled(ctx, level) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m multiHandler) Handle(ctx context.Context, r slog.Record) error {
+	var errs []error
+	for _, h := range m {
+		if h.Enabled(ctx, r.Level) {
+			if err := h.Handle(ctx, r.Clone()); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (m multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	handlers := make(multiHandler, len(m))
+	for i, h := range m {
+		handlers[i] = h.WithAttrs(attrs)
+	}
+	return handlers
+}
+
+func (m multiHandler) WithGroup(name string) slog.Handler {
+	handlers := make(multiHandler, len(m))
+	for i, h := range m {
+		handlers[i] = h.WithGroup(name)
+	}
+	return handlers
+}
+
 func buildLogger(cfg config.LogConfig) *slog.Logger {
 	var level slog.Level
 	switch cfg.Level {
@@ -143,13 +207,17 @@ func buildLogger(cfg config.LogConfig) *slog.Logger {
 	}
 
 	opts := &slog.HandlerOptions{Level: level}
-	var handler slog.Handler
+	var stderrHandler slog.Handler
 	if cfg.Format == "text" {
-		handler = slog.NewTextHandler(os.Stderr, opts)
+		stderrHandler = slog.NewTextHandler(os.Stderr, opts)
 	} else {
-		handler = slog.NewJSONHandler(os.Stderr, opts)
+		stderrHandler = slog.NewJSONHandler(os.Stderr, opts)
 	}
-	return slog.New(handler)
+
+	return slog.New(multiHandler{
+		stderrHandler,
+		otelslog.NewHandler("scimply"),
+	})
 }
 
 func buildAuditLogger(cfg config.AuditConfig) (audit.Logger, error) {

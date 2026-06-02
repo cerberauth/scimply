@@ -21,11 +21,17 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 }
 
 type Config struct {
-	Server ServerConfig `yaml:"server"`
-	Auth   AuthConfig   `yaml:"auth"`
-	Store  StoreConfig  `yaml:"store"`
-	Audit  AuditConfig  `yaml:"audit"`
-	Log    LogConfig    `yaml:"log"`
+	Server    ServerConfig    `yaml:"server"`
+	Auth      AuthConfig      `yaml:"auth"`
+	Store     StoreConfig     `yaml:"store"`
+	Audit     AuditConfig     `yaml:"audit"`
+	Log       LogConfig       `yaml:"log"`
+	Telemetry TelemetryConfig `yaml:"telemetry"`
+}
+
+type TelemetryConfig struct {
+	Endpoint string            `yaml:"endpoint"`
+	Headers  map[string]string `yaml:"headers"`
 }
 
 type ServerConfig struct {
