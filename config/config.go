@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -128,6 +129,34 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 	return cfg, nil
+}
+
+// CustomizedCount returns how many settings in the config file at path differ
+// from the defaults, counting each value once (server.tls.cert_file is one, not
+// two). It reports false when the file can't be read, so a caller can leave the
+// number out. Only the count leaves this function: never a key or a value.
+func CustomizedCount(path string) (int, bool) {
+	cfg, err := Load(path)
+	if err != nil {
+		return 0, false
+	}
+	return countDifferences(reflect.ValueOf(defaultConfig()).Elem(), reflect.ValueOf(cfg).Elem()), true
+}
+
+// countDifferences walks two values of the same type and counts the leaf values
+// that differ.
+func countDifferences(def, got reflect.Value) int {
+	if def.Kind() == reflect.Struct {
+		n := 0
+		for i := 0; i < def.NumField(); i++ {
+			n += countDifferences(def.Field(i), got.Field(i))
+		}
+		return n
+	}
+	if reflect.DeepEqual(def.Interface(), got.Interface()) {
+		return 0
+	}
+	return 1
 }
 
 const defaultPrefix = "scim_"
