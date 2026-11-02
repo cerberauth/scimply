@@ -97,6 +97,10 @@ Use `-c` to pass a custom config path: `scimply serve -c /etc/scimply/config.yam
 
 See the [configuration reference](https://cerberauth.com/docs/scimply/reference/configuration/) for all options (store backends, TLS, audit logging, etc.).
 
+### Telemetry
+
+The `scimply` binary collects anonymous usage data to help improve the tool: which command ran, the names (never the values) of the flags used, how the command exited and how long it took, the CLI version, OS and architecture, and basic resource usage, how often a command was mistyped (never what you typed), whether it crashed (never the crash message), how many configuration options `serve` sets away from their defaults, and a few counts and timings that never contain your data: the store backend, auth type and whether TLS is on when `serve` starts, and the SCIM requests it serves by endpoint (`Users`, `Groups`, …; custom resource types are "other"), HTTP method and status class, with their duration. Interactive runs also include a random install and session identifier, the shell and terminal emulator you run it in (from a fixed list) and whether its output is piped; runs in CI are fully anonymous. Resources, IDs, filters, tokens and other request content are never collected. Programs that embed scimply's Go packages send nothing. You can opt out by passing the `--sqa-opt-out` flag, or by setting `DO_NOT_TRACK=1` (or `ARGVIO_DISABLED=1`).
+
 ## API Endpoints
 
 | Method | Path | Description |

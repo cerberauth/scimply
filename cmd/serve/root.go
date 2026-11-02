@@ -110,9 +110,11 @@ func runServe(cmd *cobra.Command, configFile, version, commit, date string) erro
 		return fmt.Errorf("create server: %w", err)
 	}
 
+	recordServeStarted(cmd.Context(), cfg)
+
 	httpSrv := &http.Server{
 		Addr:              cfg.Server.Addr,
-		Handler:           srv,
+		Handler:           withRequestMetrics(cmd.Context(), cfg.Server.BasePath, srv),
 		ReadTimeout:       cfg.Server.ReadTimeout.Duration,
 		WriteTimeout:      cfg.Server.WriteTimeout.Duration,
 		ReadHeaderTimeout: 5 * time.Second,
