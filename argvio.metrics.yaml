@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/getargvio/argvio/main/schema/metrics/v1.schema.json
+#
+# scimply's product metrics, as shown on the Argvio Product dashboard. Sent by
+# `scimply serve` only, never by programs embedding scimply's server package.
+# Synced to Argvio on release (.github/workflows/argvio-metrics.yml); see
+# https://github.com/getargvio/argvio/blob/main/docs/metric-catalog.md.
+# Every dimension value comes from a fixed list.
+version: 1
+service: scimply
+metrics:
+  - name: serve.started
+    kind: counter
+    title: Servers started
+    description: scimply serve starts, by store backend, auth type and whether TLS is on.
+    dims: [store, auth, tls]
+    dim_order:
+      store: [memory, postgres, mysql, mongodb, scim, other]
+      tls: ["yes", "no"]
+  - name: scim.requests
+    kind: counter
+    title: SCIM requests
+    description: Requests served, by SCIM endpoint (custom resource types are "other"), HTTP method and status class.
+    dims: [endpoint, method, status]
+    dim_order:
+      endpoint: [users, groups, me, bulk, serviceproviderconfig, resourcetypes, schemas, other]
+      method: [get, post, put, patch, delete, other]
+      status: [2xx, 3xx, 4xx, 5xx]
+  - name: scim.request
+    kind: duration
+    title: SCIM request time
+    description: Time to serve a request, by SCIM endpoint and HTTP method.
+    dims: [endpoint, method]
+    dim_order:
+      endpoint: [users, groups, me, bulk, serviceproviderconfig, resourcetypes, schemas, other]
+    direction: down_is_good
+  - name: scim.server-error-rate
+    kind: ratio
+    title: Server error rate
+    description: Share of SCIM requests answered with a 5xx.
+    unit: "%"
+    scale: 100
+    direction: down_is_good
+    numerator: { metric: scim.requests, where: { status: 5xx } }
+    denominator: { metric: scim.requests }
