@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cerberauth/x/otelx"
+	"github.com/cerberauth/x/telemetryx"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 
@@ -45,10 +47,15 @@ type storeCloser interface {
 	Close(ctx context.Context) error
 }
 
+// runServe's failures carry a fixed reason (see telemetryx.Reason), so Argvio
+// can tell where users get stuck setting up a server. The reason never
+// includes the error text.
 func runServe(cmd *cobra.Command, configFile, version, commit, date string) error {
+	began := time.Now()
+
 	cfg, err := config.Load(configFile)
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		return telemetryx.Reason(fmt.Errorf("load config: %w", err), "config")
 	}
 
 	xOpts := []otelx.Option{
@@ -77,17 +84,17 @@ func runServe(cmd *cobra.Command, configFile, version, commit, date string) erro
 
 	auditLogger, err := buildAuditLogger(cfg.Audit)
 	if err != nil {
-		return err
+		return telemetryx.Reason(err, "audit-log")
 	}
 
 	st, closeStore, err := buildStore(cfg)
 	if err != nil {
-		return err
+		return telemetryx.Reason(err, "store")
 	}
 
 	authOpts, err := buildAuth(cfg.Auth)
 	if err != nil {
-		return err
+		return telemetryx.Reason(err, "auth")
 	}
 
 	reg := schema.NewRegistry()
@@ -107,12 +114,27 @@ func runServe(cmd *cobra.Command, configFile, version, commit, date string) erro
 
 	srv, err := server.New(opts...)
 	if err != nil {
-		return fmt.Errorf("create server: %w", err)
+		return telemetryx.Reason(fmt.Errorf("create server: %w", err), "server")
 	}
 
+	// Bind the port before reporting the start, so a server that could not
+	// listen (port in use) is not counted as started.
+	addr := cfg.Server.Addr
+	if addr == "" {
+		addr = ":http" // what http.Server.ListenAndServe falls back to
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return telemetryx.Reason(fmt.Errorf("server error: %w", err), "listen")
+	}
+	recordServeStarted(cmd.Context(), cfg, time.Since(began))
+	listening := time.Now()
+	stats := &runStats{}
+	defer func() { stats.report(cmd.Context(), cfg, time.Since(listening)) }()
+
 	httpSrv := &http.Server{
-		Addr:              cfg.Server.Addr,
-		Handler:           srv,
+		Addr:              addr,
+		Handler:           withRequestMetrics(cmd.Context(), cfg.Server.BasePath, stats, srv),
 		ReadTimeout:       cfg.Server.ReadTimeout.Duration,
 		WriteTimeout:      cfg.Server.WriteTimeout.Duration,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -126,16 +148,16 @@ func runServe(cmd *cobra.Command, configFile, version, commit, date string) erro
 	go func() {
 		logger.Info("server starting", "addr", cfg.Server.Addr, "base_path", cfg.Server.BasePath)
 		if cfg.Server.TLS.CertFile != "" && cfg.Server.TLS.KeyFile != "" {
-			errCh <- httpSrv.ListenAndServeTLS(cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
+			errCh <- httpSrv.ServeTLS(ln, cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile)
 		} else {
-			errCh <- httpSrv.ListenAndServe()
+			errCh <- httpSrv.Serve(ln)
 		}
 	}()
 
 	select {
 	case err := <-errCh:
 		if err != nil && err != http.ErrServerClosed {
-			return fmt.Errorf("server error: %w", err)
+			return telemetryx.Reason(fmt.Errorf("server error: %w", err), "serve")
 		}
 	case <-ctx.Done():
 		logger.Info("shutting down")
@@ -247,7 +269,7 @@ func buildStore(cfg *config.Config) (store.ResourceStore, storeCloser, error) {
 	case "", "memory":
 		return store.NewMemoryStore(), nil, nil
 
-	case "postgres":
+	case storePostgres:
 		pc := cfg.Store.Postgres
 		s, err := postgres.New(
 			postgres.WithDSN(pc.DSN),
@@ -265,7 +287,7 @@ func buildStore(cfg *config.Config) (store.ResourceStore, storeCloser, error) {
 		}
 		return s, s, nil
 
-	case "mysql":
+	case storeMySQL:
 		mc := cfg.Store.MySQL
 		s, err := mysql.New(
 			mysql.WithDSN(mc.DSN),
@@ -281,7 +303,7 @@ func buildStore(cfg *config.Config) (store.ResourceStore, storeCloser, error) {
 		}
 		return s, s, nil
 
-	case "mongodb":
+	case storeMongoDB:
 		mdc := cfg.Store.MongoDB
 		s, err := mongodb.New(
 			mongodb.WithURI(mdc.URI),
@@ -298,7 +320,7 @@ func buildStore(cfg *config.Config) (store.ResourceStore, storeCloser, error) {
 		}
 		return s, s, nil
 
-	case "scim":
+	case storeSCIM:
 		sc := cfg.Store.SCIM
 		scimOpts := []scimconnector.Option{
 			scimconnector.WithBaseURL(sc.BaseURL),
