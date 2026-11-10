@@ -203,3 +203,32 @@ func TestEvalFilter_CaseInsensitiveAttrName(t *testing.T) {
 		t.Error("expected case-insensitive attribute name match")
 	}
 }
+
+func TestEvalFilter_SchemaQualifiedPaths(t *testing.T) {
+	const ext = "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"
+	res := &Resource{
+		Schemas: []string{"urn:ietf:params:scim:schemas:core:2.0:User", ext},
+		Attributes: map[string]interface{}{
+			"userName": "alice",
+			ext: map[string]interface{}{
+				"department": "Eng",
+				"manager":    map[string]interface{}{"value": "boss"},
+			},
+		},
+	}
+	for filter, want := range map[string]bool{
+		ext + `:department eq "Eng"`:                                     true,
+		ext + `:department eq "Ops"`:                                     false,
+		ext + `:manager.value eq "boss"`:                                 true,
+		ext + `:manager[value eq "boss"]`:                                true,
+		`urn:ietf:params:scim:schemas:core:2.0:User:userName eq "alice"`: true,
+	} {
+		f, err := ParseFilter(filter)
+		if err != nil {
+			t.Fatalf("ParseFilter(%q): %v", filter, err)
+		}
+		if got := EvalFilter(f, res); got != want {
+			t.Errorf("%s: got %v, want %v", filter, got, want)
+		}
+	}
+}

@@ -6,6 +6,7 @@ import (
 
 	sqlconn "github.com/cerberauth/scimply/connector/sql"
 	"github.com/cerberauth/scimply/schema"
+	"github.com/cerberauth/scimply/store"
 )
 
 // JoinDef describes an additional table to JOIN when reading or writing a resource type.
@@ -36,6 +37,7 @@ type config struct {
 	maxConns        int
 	connTimeout     time.Duration
 	resourceConfigs map[string]ResourceTableConfig // lowercase resource type -> config
+	maxFilterScan   int
 }
 
 func defaultConfig() config {
@@ -44,10 +46,19 @@ func defaultConfig() config {
 		maxConns:        10,
 		connTimeout:     30 * time.Second,
 		resourceConfigs: make(map[string]ResourceTableConfig),
+		maxFilterScan:   store.DefaultMaxFilterScan,
 	}
 }
 
 type Option func(*config)
+
+// WithMaxFilterScan bounds the number of rows scanned in-process when a
+// filter cannot be translated to a native query. Lists that would scan more
+// fail with store.ErrTooMany instead of returning wrong results. A value
+// <= 0 disables the bound.
+func WithMaxFilterScan(n int) Option {
+	return func(c *config) { c.maxFilterScan = n }
+}
 
 func WithDSN(dsn string) Option {
 	return func(c *config) { c.dsn = dsn }

@@ -206,14 +206,14 @@ func (s *Store) List(ctx context.Context, resourceType string, params store.List
 	coll := s.db.Collection(s.collectionName(resourceType))
 
 	filter := bson.D{}
-	needsClientFilter := false
 	if params.Filter != nil {
 		bsonFilter, err := TranslateFilter(params.Filter)
 		if err != nil {
-			needsClientFilter = true
-		} else {
-			filter = bsonFilter
+			// The filter cannot be translated to a MongoDB query: scan the
+			// collection and filter in-process instead of ignoring the filter.
+			return s.listClientFiltered(ctx, coll, resourceType, params)
 		}
+		filter = bsonFilter
 	}
 
 	total64, err := coll.CountDocuments(ctx, filter)
@@ -257,19 +257,11 @@ func (s *Store) List(ctx context.Context, resourceType string, params store.List
 	}
 	defer func() { _ = cursor.Close(ctx) }()
 
-	cfg, hasCfg := s.resCfg(resourceType)
-
 	var resources []*resource.Resource
 	for cursor.Next(ctx) {
-		var doc bson.M
-		if err := cursor.Decode(&doc); err != nil {
-			return nil, fmt.Errorf("%w: decode: %v", store.ErrInternal, err)
-		}
-		var r *resource.Resource
-		if hasCfg && len(cfg.FieldMappings) > 0 {
-			r = mappedDocToResource(doc, cfg, resourceType)
-		} else {
-			r = docToResource(doc, resourceType)
+		r, err := s.decodeResource(cursor, resourceType)
+		if err != nil {
+			return nil, err
 		}
 		resources = append(resources, r)
 	}
@@ -278,12 +270,49 @@ func (s *Store) List(ctx context.Context, resourceType string, params store.List
 	}
 
 	return &store.ListResult{
-		Resources:         resources,
-		TotalResults:      total,
-		StartIndex:        startIndex,
-		ItemsPerPage:      len(resources),
-		NeedsClientFilter: needsClientFilter,
+		Resources:    resources,
+		TotalResults: total,
+		StartIndex:   startIndex,
+		ItemsPerPage: len(resources),
 	}, nil
+}
+
+// listClientFiltered streams every document of the collection and applies
+// the filter, sorting and pagination in-process. It fails with
+// store.ErrTooMany when more than the configured maximum number of documents
+// would be scanned.
+func (s *Store) listClientFiltered(ctx context.Context, coll *mongo.Collection, resourceType string, params store.ListParams) (*store.ListResult, error) {
+	cursor, err := coll.Find(ctx, bson.D{})
+	if err != nil {
+		return nil, fmt.Errorf("%w: find: %v", store.ErrInternal, err)
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+
+	cf := store.NewClientFilter(params, s.cfg.maxFilterScan)
+	for cursor.Next(ctx) {
+		r, err := s.decodeResource(cursor, resourceType)
+		if err != nil {
+			return nil, err
+		}
+		if err := cf.Add(r); err != nil {
+			return nil, err
+		}
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("%w: cursor: %v", store.ErrInternal, err)
+	}
+	return cf.Result(), nil
+}
+
+func (s *Store) decodeResource(cursor *mongo.Cursor, resourceType string) (*resource.Resource, error) {
+	var doc bson.M
+	if err := cursor.Decode(&doc); err != nil {
+		return nil, fmt.Errorf("%w: decode: %v", store.ErrInternal, err)
+	}
+	if cfg, ok := s.resCfg(resourceType); ok && len(cfg.FieldMappings) > 0 {
+		return mappedDocToResource(doc, cfg, resourceType), nil
+	}
+	return docToResource(doc, resourceType), nil
 }
 
 func (s *Store) Replace(ctx context.Context, resourceType string, id string, res *resource.Resource) (*resource.Resource, error) {

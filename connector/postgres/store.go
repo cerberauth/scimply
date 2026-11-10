@@ -273,23 +273,21 @@ func (s *Store) List(ctx context.Context, resourceType string, params store.List
 }
 
 func (s *Store) listJSONMode(ctx context.Context, resourceType string, params store.ListParams) (*store.ListResult, error) {
-	countQ, countArgs, err := s.buildCountQuery(resourceType, params.Filter)
-	needsClientFilter := err != nil
-
-	var totalResults int
-	if !needsClientFilter {
-		if scanErr := s.pool.QueryRow(ctx, countQ, countArgs...).Scan(&totalResults); scanErr != nil {
-			return nil, fmt.Errorf("%w: count query: %v", store.ErrInternal, scanErr)
-		}
-	}
-
 	listQ, listArgs, err := s.buildListQuery(resourceType, params)
 	if err != nil {
-		listQ, listArgs, err = s.buildFallbackQuery(resourceType)
-		if err != nil {
-			return nil, err
-		}
-		needsClientFilter = true
+		// The filter cannot be translated to SQL: scan the table and filter
+		// in-process instead of returning a truncated result set.
+		q, args := s.buildScanQuery(resourceType)
+		return s.listClientFiltered(ctx, q, args, params, scanJSONRow)
+	}
+
+	countQ, countArgs, err := s.buildCountQuery(resourceType, params.Filter)
+	if err != nil {
+		return nil, fmt.Errorf("%w: count query: %v", store.ErrInternal, err)
+	}
+	var totalResults int
+	if scanErr := s.pool.QueryRow(ctx, countQ, countArgs...).Scan(&totalResults); scanErr != nil {
+		return nil, fmt.Errorf("%w: count query: %v", store.ErrInternal, scanErr)
 	}
 
 	rows, err := s.pool.Query(ctx, listQ, listArgs...)
@@ -310,46 +308,6 @@ func (s *Store) listJSONMode(ctx context.Context, resourceType string, params st
 		return nil, fmt.Errorf("%w: rows iteration: %v", store.ErrInternal, err)
 	}
 
-	if needsClientFilter {
-		var filtered []*resource.Resource
-		for _, r := range resources {
-			if params.Filter == nil || resource.EvalFilter(params.Filter, r) {
-				filtered = append(filtered, r)
-			}
-		}
-		if params.SortBy != "" {
-			order := resource.SortAscending
-			if params.SortOrder == store.SortDescending {
-				order = resource.SortDescending
-			}
-			resource.SortResources(filtered, params.SortBy, order)
-		}
-		totalResults = len(filtered)
-		startIndex := params.StartIndex
-		if startIndex < 1 {
-			startIndex = 1
-		}
-		start := startIndex - 1
-		if start > totalResults {
-			start = totalResults
-		}
-		pageSize := params.Count
-		if pageSize <= 0 {
-			pageSize = totalResults
-		}
-		end := start + pageSize
-		if end > totalResults {
-			end = totalResults
-		}
-		page := filtered[start:end]
-		return &store.ListResult{
-			Resources:    page,
-			TotalResults: totalResults,
-			StartIndex:   startIndex,
-			ItemsPerPage: len(page),
-		}, nil
-	}
-
 	startIndex := params.StartIndex
 	if startIndex < 1 {
 		startIndex = 1
@@ -362,6 +320,32 @@ func (s *Store) listJSONMode(ctx context.Context, resourceType string, params st
 	}, nil
 }
 
+// listClientFiltered streams every row returned by q and applies the filter,
+// sorting and pagination in-process. It fails with store.ErrTooMany when
+// more than the configured maximum number of rows would be scanned.
+func (s *Store) listClientFiltered(ctx context.Context, q string, args []interface{}, params store.ListParams, scan func(rowScanner) (*resource.Resource, error)) (*store.ListResult, error) {
+	rows, err := s.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("%w: list query: %v", store.ErrInternal, err)
+	}
+	defer rows.Close()
+
+	cf := store.NewClientFilter(params, s.cfg.maxFilterScan)
+	for rows.Next() {
+		res, err := scan(rows)
+		if err != nil {
+			return nil, fmt.Errorf("%w: scan row: %v", store.ErrInternal, err)
+		}
+		if err := cf.Add(res); err != nil {
+			return nil, err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%w: rows iteration: %v", store.ErrInternal, err)
+	}
+	return cf.Result(), nil
+}
+
 func (s *Store) listColumnMode(ctx context.Context, resourceType string, params store.ListParams, cfg ResourceTableConfig) (*store.ListResult, error) {
 	m := s.mapperFor(resourceType)
 	entries, baseQ, _ := buildColumnSelect(cfg)
@@ -370,7 +354,14 @@ func (s *Store) listColumnMode(ctx context.Context, resourceType string, params 
 	var args []interface{}
 	if params.Filter != nil {
 		result := sqlconn.TranslateFilter(params.Filter, m, sqlconn.DialectPostgres, "")
-		if result.Err == nil && result.Clause != "" {
+		if result.Err != nil {
+			// The filter cannot be translated to SQL: scan the table and
+			// filter in-process instead of ignoring the filter.
+			return s.listClientFiltered(ctx, baseQ, nil, params, func(row rowScanner) (*resource.Resource, error) {
+				return scanColumnRow(row, entries, resourceType)
+			})
+		}
+		if result.Clause != "" {
 			whereParts = append(whereParts, result.Clause)
 			args = append(args, result.Args...)
 		}
@@ -404,7 +395,7 @@ func (s *Store) listColumnMode(ctx context.Context, resourceType string, params 
 			if params.SortOrder == store.SortDescending {
 				dir = "DESC"
 			}
-			col := ref.Column
+			col := quoteIdent(ref.Column)
 			if ref.Table != "" {
 				col = quoteIdent(ref.Table) + "." + quoteIdent(ref.Column)
 			}
