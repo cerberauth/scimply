@@ -29,6 +29,11 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request, resourceTy
 	}
 
 	res := resource.FromMap(body)
+	if err := s.hashPasswordAttr(r.Context(), res.Attributes); err != nil {
+		s.logAudit(r, audit.OperationCreate, resourceType, "", http.StatusInternalServerError)
+		protocol.NewSCIMError(http.StatusInternalServerError, "", "failed to process password").Write(w)
+		return
+	}
 
 	created, err := s.cfg.store.Create(r.Context(), resourceType, res)
 	if err != nil {
@@ -45,7 +50,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request, resourceTy
 
 	etag := etagFromVersion(created.Meta.Version)
 	s.logAudit(r, audit.OperationCreate, resourceType, created.ID, http.StatusCreated)
-	protocol.WriteCreated(w, r, created.ToMap(), location, etag)
+	protocol.WriteCreated(w, r, s.resourceToMap(resourceType, created), location, etag)
 }
 
 func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, resourceType, id string) {
@@ -69,7 +74,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, resourceType,
 
 	etag := etagFromVersion(res.Meta.Version)
 	s.logAudit(r, audit.OperationRead, resourceType, id, http.StatusOK)
-	protocol.WriteResource(w, r, res.ToMap(), location, etag)
+	protocol.WriteResource(w, r, s.resourceToMap(resourceType, res), location, etag)
 }
 
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request, resourceType string) {
@@ -150,7 +155,7 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request, resourceType
 		if location != "" {
 			res.Meta.Location = location
 		}
-		resources = append(resources, res.ToMap())
+		resources = append(resources, s.resourceToMap(resourceType, res))
 	}
 
 	listResp := protocol.NewListResponse(result.TotalResults, result.StartIndex, result.ItemsPerPage, resources)
@@ -171,6 +176,11 @@ func (s *Server) handleReplace(w http.ResponseWriter, r *http.Request, resourceT
 	}
 
 	res := resource.FromMap(body)
+	if err := s.hashPasswordAttr(r.Context(), res.Attributes); err != nil {
+		s.logAudit(r, audit.OperationReplace, resourceType, id, http.StatusInternalServerError)
+		protocol.NewSCIMError(http.StatusInternalServerError, "", "failed to process password").Write(w)
+		return
+	}
 
 	replaced, err := s.cfg.store.Replace(r.Context(), resourceType, id, res)
 	if err != nil {
@@ -187,7 +197,7 @@ func (s *Server) handleReplace(w http.ResponseWriter, r *http.Request, resourceT
 
 	etag := etagFromVersion(replaced.Meta.Version)
 	s.logAudit(r, audit.OperationReplace, resourceType, id, http.StatusOK)
-	protocol.WriteResource(w, r, replaced.ToMap(), location, etag)
+	protocol.WriteResource(w, r, s.resourceToMap(resourceType, replaced), location, etag)
 }
 
 func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request, resourceType, id string) {
@@ -210,6 +220,12 @@ func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request, resourceTyp
 		return
 	}
 
+	if err := s.hashPasswordPatchOps(r.Context(), patchReq.Operations); err != nil {
+		s.logAudit(r, audit.OperationPatch, resourceType, id, http.StatusInternalServerError)
+		protocol.NewSCIMError(http.StatusInternalServerError, "", "failed to process password").Write(w)
+		return
+	}
+
 	patched, err := s.cfg.store.Patch(r.Context(), resourceType, id, patchReq.Operations)
 	if err != nil {
 		scimErr := protocol.ErrorFromStoreError(err)
@@ -225,7 +241,7 @@ func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request, resourceTyp
 
 	etag := etagFromVersion(patched.Meta.Version)
 	s.logAudit(r, audit.OperationPatch, resourceType, id, http.StatusOK)
-	protocol.WriteResource(w, r, patched.ToMap(), location, etag)
+	protocol.WriteResource(w, r, s.resourceToMap(resourceType, patched), location, etag)
 }
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request, resourceType, id string) {

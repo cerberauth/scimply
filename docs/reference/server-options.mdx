@@ -60,6 +60,21 @@ server.WithAuthFunc(func(r *http.Request) (bool, error) {
 })
 ```
 
+## Passwords
+
+Attributes declared with `returned: "never"` (such as `password`) are never included in responses.
+
+### `WithPasswordHasher(fn PasswordHasher)`
+
+Hashes the `password` attribute before it reaches the store on create, replace and patch, so clear-text passwords are not persisted.
+
+```go
+server.WithPasswordHasher(func(ctx context.Context, password string) (string, error) {
+    h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+    return string(h), err
+})
+```
+
 ## Pagination
 
 ### `WithDefaultPageSize(n int)`

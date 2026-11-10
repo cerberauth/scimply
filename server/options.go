@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -26,9 +27,14 @@ type config struct {
 	defaultPageSize int
 	maxPageSize     int
 	opsCounter      metric.Int64Counter
+	passwordHasher  PasswordHasher
 }
 
 type Option func(*config)
+
+// PasswordHasher transforms a clear-text password into the value persisted
+// by the store (e.g. a bcrypt or argon2 hash).
+type PasswordHasher func(ctx context.Context, password string) (string, error)
 
 func WithStore(s store.ResourceStore) Option {
 	return func(c *config) {
@@ -104,4 +110,12 @@ func WithBearerTokenAuth(fn func(token string) (bool, error)) Option {
 		token := strings.TrimPrefix(authHeader, prefix)
 		return fn(token)
 	})
+}
+
+// WithPasswordHasher hashes the "password" attribute before it reaches the
+// store on create, replace and patch (RFC 7643 §4.1.1).
+func WithPasswordHasher(fn PasswordHasher) Option {
+	return func(c *config) {
+		c.passwordHasher = fn
+	}
 }
