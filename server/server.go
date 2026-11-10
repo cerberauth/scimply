@@ -17,6 +17,8 @@ import (
 	"github.com/cerberauth/scimply/schema"
 )
 
+const defaultMaxBodySize = 1 << 20
+
 type Server struct {
 	cfg     config
 	handler http.Handler
@@ -27,6 +29,8 @@ func New(opts ...Option) (*Server, error) {
 		defaultPageSize: 100,
 		maxPageSize:     1000,
 		maxBulkOps:      1000,
+		maxBodySize:     defaultMaxBodySize,
+		maxBulkPayload:  defaultMaxBodySize,
 	}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -71,7 +75,7 @@ func New(opts ...Option) (*Server, error) {
 func defaultServiceProviderConfig(cfg config) *schema.ServiceProviderConfig {
 	return &schema.ServiceProviderConfig{
 		Patch:          schema.Supported{Supported: true},
-		Bulk:           schema.BulkConfig{Supported: true, MaxOperations: cfg.maxBulkOps, MaxPayloadSize: 1048576},
+		Bulk:           schema.BulkConfig{Supported: true, MaxOperations: cfg.maxBulkOps, MaxPayloadSize: int(cfg.maxBulkPayload)},
 		Filter:         schema.FilterConfig{Supported: true, MaxResults: cfg.maxPageSize},
 		ChangePassword: schema.Supported{Supported: false},
 		Sort:           schema.Supported{Supported: true},

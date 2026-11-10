@@ -20,6 +20,8 @@ server:
   default_page_size: 100
   max_page_size: 1000
   max_bulk_ops: 100
+  max_body_size: 1048576 # bytes; larger request bodies get 413
+  max_bulk_payload_size: 1048576 # bytes; /Bulk body limit, advertised as bulk.maxPayloadSize
   tls:
     cert_file: ""            # path to TLS certificate (PEM)
     key_file: ""             # path to TLS private key (PEM)

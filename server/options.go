@@ -27,6 +27,8 @@ type config struct {
 	authFunc        AuthFunc
 	spConfig        *schema.ServiceProviderConfig
 	maxBulkOps      int
+	maxBodySize     int64
+	maxBulkPayload  int64
 	defaultPageSize int
 	maxPageSize     int
 	opsCounter      metric.Int64Counter
@@ -96,6 +98,28 @@ func WithServiceProviderConfig(spc *schema.ServiceProviderConfig) Option {
 func WithMaxBulkOps(n int) Option {
 	return func(c *config) {
 		c.maxBulkOps = n
+	}
+}
+
+// WithMaxBodySize limits the size in bytes of request bodies for non-bulk
+// requests. Larger bodies are rejected with 413. Values <= 0 keep the
+// default (1 MiB).
+func WithMaxBodySize(n int64) Option {
+	return func(c *config) {
+		if n > 0 {
+			c.maxBodySize = n
+		}
+	}
+}
+
+// WithMaxBulkPayloadSize limits the size in bytes of /Bulk request bodies and
+// is advertised as bulk.maxPayloadSize in the ServiceProviderConfig
+// (RFC 7644 §3.7.4). Values <= 0 keep the default (1 MiB).
+func WithMaxBulkPayloadSize(n int64) Option {
+	return func(c *config) {
+		if n > 0 {
+			c.maxBulkPayload = n
+		}
 	}
 }
 
