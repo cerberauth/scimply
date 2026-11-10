@@ -104,6 +104,7 @@ func runServe(cmd *cobra.Command, configFile, version, commit, date string) erro
 		server.WithStore(store.NewTracingStore(st)),
 		server.WithSchemaRegistry(reg),
 		server.WithBasePath(cfg.Server.BasePath),
+		server.WithBaseURL(cfg.Server.BaseURL),
 		server.WithLogger(logger),
 		server.WithAuditLogger(auditLogger),
 		server.WithDefaultPageSize(cfg.Server.DefaultPageSize),
@@ -349,16 +350,14 @@ func buildAuth(cfg config.AuthConfig) ([]server.Option, error) {
 		return nil, nil
 
 	case "bearer_token":
-		tokens := make(map[string]struct{}, len(cfg.Tokens))
-		for _, t := range cfg.Tokens {
-			tokens[t] = struct{}{}
+		tokens, err := cfg.ResolveTokens()
+		if err != nil {
+			return nil, err
 		}
-		return []server.Option{
-			server.WithBearerTokenAuth(func(token string) (bool, error) {
-				_, ok := tokens[token]
-				return ok, nil
-			}),
-		}, nil
+		if len(tokens) == 0 {
+			return nil, fmt.Errorf("bearer_token auth requires at least one token")
+		}
+		return []server.Option{server.WithBearerTokens(tokens...)}, nil
 
 	default:
 		return nil, fmt.Errorf("unknown auth type %q", cfg.Type)

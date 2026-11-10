@@ -13,6 +13,7 @@ All fields are optional — omitted fields use the defaults listed below.
 server:
   addr: ":8080"              # listen address
   base_path: "/scim/v2"      # URL prefix for all SCIM endpoints
+  base_url: ""               # public URL of the SCIM root for Location / meta.location, e.g. "https://idp.example.com/scim/v2" (defaults to the request Host)
   read_timeout: "5s"
   write_timeout: "10s"
   shutdown_timeout: "30s"    # graceful shutdown window on SIGINT/SIGTERM
@@ -51,10 +52,15 @@ When `type` is `json`, each SCIM operation is written as an NDJSON line. Output 
 ```yaml
 auth:
   type: "none"         # none | bearer_token
-  tokens:              # list of accepted bearer tokens (bearer_token only)
+  token_env:           # environment variables holding accepted tokens
+    - "SCIM_TOKEN"
+  token_files:         # files holding accepted tokens (e.g. mounted secrets)
+    - "/run/secrets/scim_token"
+  tokens:              # plain-text tokens (avoid in production)
     - "secret-token-1"
-    - "secret-token-2"
 ```
+
+Tokens from all three sources are accepted and compared in constant time. Startup fails if a referenced variable is unset or a file is missing or empty.
 
 ## Store
 

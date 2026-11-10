@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -39,8 +40,12 @@ type TelemetryConfig struct {
 }
 
 type ServerConfig struct {
-	Addr            string    `yaml:"addr"`
-	BasePath        string    `yaml:"base_path"`
+	Addr     string `yaml:"addr"`
+	BasePath string `yaml:"base_path"`
+	// BaseURL is the public absolute URL of the SCIM root used in Location
+	// headers and meta.location (e.g. "https://idp.example.com/scim/v2").
+	// When empty it is derived from the request Host header.
+	BaseURL         string    `yaml:"base_url"`
 	ReadTimeout     Duration  `yaml:"read_timeout"`
 	WriteTimeout    Duration  `yaml:"write_timeout"`
 	ShutdownTimeout Duration  `yaml:"shutdown_timeout"`
@@ -58,8 +63,46 @@ type TLSConfig struct {
 // AuthConfig controls request authentication.
 // Type: "none" (default) | "bearer_token"
 type AuthConfig struct {
-	Type   string   `yaml:"type"`
+	Type string `yaml:"type"`
+	// Tokens lists accepted bearer tokens in plain text. Prefer TokenEnv or
+	// TokenFiles to keep secrets out of the config file.
 	Tokens []string `yaml:"tokens"`
+	// TokenEnv lists environment variables, each holding one accepted token.
+	TokenEnv []string `yaml:"token_env"`
+	// TokenFiles lists files, each holding one accepted token (surrounding
+	// whitespace is trimmed), e.g. mounted secrets.
+	TokenFiles []string `yaml:"token_files"`
+}
+
+// ResolveTokens returns every accepted bearer token from Tokens, TokenEnv
+// and TokenFiles. A referenced environment variable that is unset or empty,
+// or a file that is unreadable or empty, is an error.
+func (a AuthConfig) ResolveTokens() ([]string, error) {
+	tokens := make([]string, 0, len(a.Tokens)+len(a.TokenEnv)+len(a.TokenFiles))
+	for _, t := range a.Tokens {
+		if t != "" {
+			tokens = append(tokens, t)
+		}
+	}
+	for _, name := range a.TokenEnv {
+		v := strings.TrimSpace(os.Getenv(name))
+		if v == "" {
+			return nil, fmt.Errorf("auth token environment variable %q is not set", name)
+		}
+		tokens = append(tokens, v)
+	}
+	for _, path := range a.TokenFiles {
+		data, err := os.ReadFile(path) //nolint:gosec // G304: path comes from the operator's config file.
+		if err != nil {
+			return nil, fmt.Errorf("read auth token file: %w", err)
+		}
+		v := strings.TrimSpace(string(data))
+		if v == "" {
+			return nil, fmt.Errorf("auth token file %q is empty", path)
+		}
+		tokens = append(tokens, v)
+	}
+	return tokens, nil
 }
 
 // StoreConfig selects the backend store.
