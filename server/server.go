@@ -55,13 +55,15 @@ func New(opts ...Option) (*Server, error) {
 	)
 
 	s := &Server{cfg: cfg}
+	// Outermost first: panics are recovered last, and every response,
+	// including 401/406/415 rejections, is traced and logged.
 	s.handler = chain(
 		http.HandlerFunc(s.route),
-		recoveryMiddleware,
+		s.recoveryMiddleware,
+		otelMiddleware,
+		s.loggingMiddleware,
 		contentTypeMiddleware,
 		s.authMiddleware,
-		s.loggingMiddleware,
-		otelMiddleware,
 	)
 	return s, nil
 }
@@ -201,7 +203,18 @@ func (s *Server) resourceLocation(r *http.Request, resourceType, id string) stri
 	if !ok {
 		return ""
 	}
-	return fmt.Sprintf("%s://%s%s%s/%s", scheme(r), r.Host, s.cfg.basePath, rt.Endpoint, id)
+	return s.baseURL(r) + rt.Endpoint + "/" + id
+}
+
+// baseURL returns the absolute URL of the SCIM service root, used to build
+// Location headers and meta.location. The configured WithBaseURL is used when
+// set; otherwise it is derived from the request, which relies on the
+// client-controlled Host header.
+func (s *Server) baseURL(r *http.Request) string {
+	if s.cfg.baseURL != "" {
+		return s.cfg.baseURL
+	}
+	return scheme(r) + "://" + r.Host + s.cfg.basePath
 }
 
 func etagFromVersion(version string) string {

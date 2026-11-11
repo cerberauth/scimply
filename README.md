@@ -38,6 +38,7 @@ package main
 import (
     "log"
     "net/http"
+    "os"
 
     "github.com/cerberauth/scimply/schema"
     "github.com/cerberauth/scimply/server"
@@ -52,9 +53,7 @@ func main() {
         server.WithStore(store.NewMemoryStore()),
         server.WithSchemaRegistry(reg),
         server.WithBasePath("/scim/v2"),
-        server.WithBearerTokenAuth(func(token string) (bool, error) {
-            return token == "my-secret-token", nil
-        }),
+        server.WithBearerTokens(os.Getenv("SCIM_TOKEN")),
     )
     if err != nil {
         log.Fatal(err)
@@ -82,15 +81,15 @@ server:
 
 auth:
   type: bearer_token
-  tokens:
-    - "my-secret-token"
+  token_env:
+    - SCIM_TOKEN
 
 store:
   type: memory
 EOF
 
 # run
-scimply serve
+SCIM_TOKEN=my-secret-token scimply serve
 ```
 
 Use `-c` to pass a custom config path: `scimply serve -c /etc/scimply/config.yaml`.

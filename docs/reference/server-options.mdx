@@ -38,15 +38,31 @@ server.WithBasePath("/scim/v2")
 
 Default: no prefix (endpoints at `/Users`, `/Groups`, etc.).
 
+### `WithBaseURL(baseURL string)`
+
+Public absolute URL of the SCIM root, used for `Location` headers and `meta.location`. Set it in production: otherwise locations are built from the request `Host` header, which clients control and which is often wrong behind a reverse proxy.
+
+```go
+server.WithBaseURL("https://idp.example.com/scim/v2")
+```
+
 ## Authentication
+
+### `WithBearerTokens(tokens ...string)`
+
+Accepts requests carrying any of the given static bearer tokens. Tokens are compared in constant time.
+
+```go
+server.WithBearerTokens(os.Getenv("SCIM_TOKEN"))
+```
 
 ### `WithBearerTokenAuth(fn func(token string) (bool, error))`
 
-Validates Bearer tokens. `fn` receives the token without the `Bearer ` prefix.
+Validates Bearer tokens with a custom function. `fn` receives the token without the `Bearer ` prefix. Use a constant-time comparison (`crypto/subtle`) when checking secrets.
 
 ```go
 server.WithBearerTokenAuth(func(token string) (bool, error) {
-    return token == os.Getenv("SCIM_TOKEN"), nil
+    return lookupToken(ctx, token)
 })
 ```
 

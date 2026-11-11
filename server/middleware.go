@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -22,12 +23,22 @@ func chain(h http.Handler, middlewares ...middlewareFunc) http.Handler {
 	return h
 }
 
-func recoveryMiddleware(next http.Handler) http.Handler {
+// recoveryMiddleware turns panics into a generic 500 response. The panic
+// value and stack trace are logged and never sent to the client.
+func (s *Server) recoveryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
-				detail := fmt.Sprintf("internal server error: %v", rec)
-				protocol.NewSCIMError(http.StatusInternalServerError, "", detail).Write(w)
+				if rec == http.ErrAbortHandler { //nolint:errorlint // sentinel compared by identity, as net/http does
+					panic(rec)
+				}
+				s.cfg.logger.Error("panic serving scim request",
+					slog.String("method", r.Method),
+					slog.String("path", r.URL.Path),
+					slog.Any("panic", rec),
+					slog.String("stack", string(debug.Stack())),
+				)
+				protocol.NewSCIMError(http.StatusInternalServerError, "", "internal server error").Write(w)
 			}
 		}()
 		next.ServeHTTP(w, r)

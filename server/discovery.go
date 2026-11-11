@@ -48,7 +48,7 @@ func (s *Server) handleResourceTypes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		m := resourceTypeToMap(rt)
-		location := scheme(r) + "://" + r.Host + s.cfg.basePath + "/ResourceTypes/" + rt.Name
+		location := s.baseURL(r) + "/ResourceTypes/" + rt.Name
 		protocol.WriteResource(w, r, m, location, "")
 		return
 	}

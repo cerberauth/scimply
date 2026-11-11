@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -19,6 +21,7 @@ type config struct {
 	store           store.ResourceStore
 	registry        *schema.Registry
 	basePath        string
+	baseURL         string
 	auditLogger     audit.Logger
 	logger          *slog.Logger
 	authFunc        AuthFunc
@@ -52,6 +55,17 @@ func WithBasePath(path string) Option {
 	return func(c *config) {
 		path = strings.TrimRight(path, "/")
 		c.basePath = path
+	}
+}
+
+// WithBaseURL sets the absolute URL of the SCIM service root (e.g.
+// "https://idp.example.com/scim/v2") used to build Location headers and
+// meta.location. Without it, locations are derived from the request Host
+// header and TLS state, which clients control and which are often wrong
+// behind a reverse proxy.
+func WithBaseURL(baseURL string) Option {
+	return func(c *config) {
+		c.baseURL = strings.TrimRight(baseURL, "/")
 	}
 }
 
@@ -118,4 +132,24 @@ func WithPasswordHasher(fn PasswordHasher) Option {
 	return func(c *config) {
 		c.passwordHasher = fn
 	}
+}
+
+// WithBearerTokens accepts requests carrying any of the given static bearer
+// tokens. Tokens are compared in constant time.
+func WithBearerTokens(tokens ...string) Option {
+	digests := make([][sha256.Size]byte, 0, len(tokens))
+	for _, t := range tokens {
+		if t == "" {
+			continue
+		}
+		digests = append(digests, sha256.Sum256([]byte(t)))
+	}
+	return WithBearerTokenAuth(func(token string) (bool, error) {
+		got := sha256.Sum256([]byte(token))
+		match := 0
+		for i := range digests {
+			match |= subtle.ConstantTimeCompare(got[:], digests[i][:])
+		}
+		return match == 1, nil
+	})
 }

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -55,5 +56,33 @@ func TestCustomizedCount_UnavailableWhenTheFileCannotBeLoaded(t *testing.T) {
 				t.Errorf("CustomizedCount() = (%d, %v), want (0, false)", n, ok)
 			}
 		})
+	}
+}
+
+func TestAuthConfigResolveTokens(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "token")
+	if err := os.WriteFile(file, []byte("from-file\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SCIMPLY_TEST_TOKEN", "from-env")
+
+	got, err := AuthConfig{
+		Tokens:     []string{"plain"},
+		TokenEnv:   []string{"SCIMPLY_TEST_TOKEN"},
+		TokenFiles: []string{file},
+	}.ResolveTokens()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, ",") != "plain,from-env,from-file" {
+		t.Errorf("got %v", got)
+	}
+
+	if _, err := (AuthConfig{TokenEnv: []string{"SCIMPLY_TEST_TOKEN_UNSET"}}).ResolveTokens(); err == nil {
+		t.Error("expected error for unset environment variable")
+	}
+	if _, err := (AuthConfig{TokenFiles: []string{filepath.Join(dir, "missing")}}).ResolveTokens(); err == nil {
+		t.Error("expected error for missing token file")
 	}
 }
