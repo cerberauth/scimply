@@ -52,6 +52,7 @@ Resources are stored in a JSONB `data` column. The filter-to-SQL translator hand
 | `WithMaxConns(n int)` | Maximum pool connections (default: 10) |
 | `WithMinConns(n int)` | Minimum pool connections (default: 2) |
 | `WithConnTimeout(d time.Duration)` | Connection idle timeout (default: 30s) |
+| `WithMaxFilterScan(n int)` | Maximum rows scanned in-process when a filter cannot be translated to SQL; larger scans fail with `400 tooMany` (default: 10000) |
 
 `Pool() *pgxpool.Pool` — returns the raw connection pool for custom queries (available after `Init`).
 
@@ -125,6 +126,7 @@ Uses `database/sql` with a JSON column strategy. Any MySQL-compatible driver wor
 | `WithResourceConfig(resourceType string, cfg ResourceTableConfig)` | All-in-one: set table, field mappings, and joins at once |
 | `WithMaxConns(n int)` | Maximum open connections (default: 10) |
 | `WithConnTimeout(d time.Duration)` | Connection idle timeout (default: 30s) |
+| `WithMaxFilterScan(n int)` | Maximum rows scanned in-process when a filter cannot be translated to SQL; larger scans fail with `400 tooMany` (default: 10000) |
 
 `DB() *sql.DB` — returns the raw database handle for custom queries (available after `Init`).
 
@@ -185,6 +187,7 @@ Filters are translated to BSON. Value-path filters fall back to in-process evalu
 | `WithSchemaRegistry(reg)` | Registry used to resolve resource types |
 | `WithCollectionPrefix(prefix string)` | Prefix for scimply-managed collections (default: `scim_`) |
 | `WithTimeout(d time.Duration)` | Operation timeout (default: 30s) |
+| `WithMaxFilterScan(n int)` | Maximum documents scanned in-process when a filter cannot be translated to a MongoDB query; larger scans fail with `400 tooMany` (default: 10000) |
 | `WithCollectionName(resourceType, collection string)` | Point a resource type at a specific collection |
 | `WithTableName(resourceType, collection string)` | Alias for `WithCollectionName` |
 | `WithFieldMapping(resourceType, scimAttr, bsonPath string)` | Map a SCIM attribute to a BSON field path; activates field-mapping mode |

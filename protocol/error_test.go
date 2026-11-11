@@ -49,7 +49,7 @@ func TestErrorFromStoreError(t *testing.T) {
 		{store.ErrBadPath, "400", ErrTypeInvalidPath},
 		{store.ErrBadPatch, "400", ErrTypeInvalidSyntax},
 		{store.ErrNoTarget, "400", ErrTypeNoTarget},
-		{store.ErrTooMany, "413", ErrTypeTooMany},
+		{store.ErrTooMany, "400", ErrTypeTooMany},
 		{store.ErrInvalidValue, "400", ErrTypeInvalidValue},
 		{store.ErrInternal, "500", ""},
 	}

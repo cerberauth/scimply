@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"testing"
 
@@ -179,5 +181,44 @@ func TestPostgresDelete(t *testing.T) {
 	_, err = s.Get(ctx, "User", created.ID)
 	if err == nil {
 		t.Error("expected ErrNotFound after Delete, got nil")
+	}
+}
+
+func TestPostgresListUntranslatableFilterNotTruncated(t *testing.T) {
+	s := setupPostgresStore(t)
+	ctx := context.Background()
+
+	const n = 1100
+	for i := 0; i < n; i++ {
+		u := newTestUser(fmt.Sprintf("bulk%04d@example.com", i))
+		u.Attributes["urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"] = map[string]interface{}{"department": "Eng"}
+		if _, err := s.Create(ctx, "User", u); err != nil {
+			t.Fatalf("Create %d: %v", i, err)
+		}
+	}
+
+	filter, err := resource.ParseFilter(`urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department eq "Eng"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := store.ListParams{Filter: filter, StartIndex: 1051, Count: 100, SortBy: "userName"}
+	if _, _, err := s.buildListQuery("User", params); err == nil {
+		t.Fatal("expected the extension filter to be untranslatable to SQL")
+	}
+
+	result, err := s.List(ctx, "User", params)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if result.TotalResults != n {
+		t.Errorf("TotalResults: got %d, want %d", result.TotalResults, n)
+	}
+	if result.ItemsPerPage != 50 {
+		t.Errorf("ItemsPerPage: got %d, want 50", result.ItemsPerPage)
+	}
+
+	s.cfg.maxFilterScan = 1000
+	if _, err := s.List(ctx, "User", params); !errors.Is(err, store.ErrTooMany) {
+		t.Errorf("expected ErrTooMany above maxFilterScan, got %v", err)
 	}
 }

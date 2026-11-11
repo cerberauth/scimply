@@ -84,7 +84,7 @@ func evalAttrExpr(e *AttrExpression, attrs map[string]interface{}) bool {
 // element of the array. If the attribute is a single complex object (not an
 // array) the filter is evaluated directly against that object's fields.
 func evalValuePath(e *ValuePathExpression, attrs map[string]interface{}) bool {
-	val := lookupKey(attrs, e.Path.AttributeName)
+	val := lookupKey(schemaScope(attrs, e.Path.Schema), e.Path.AttributeName)
 	if val == nil {
 		return false
 	}
@@ -107,7 +107,7 @@ func evalValuePath(e *ValuePathExpression, attrs map[string]interface{}) bool {
 }
 
 func getAttrValue(attrs map[string]interface{}, path AttributePath) interface{} {
-	val := lookupKey(attrs, path.AttributeName)
+	val := lookupKey(schemaScope(attrs, path.Schema), path.AttributeName)
 	if val == nil {
 		return nil
 	}
@@ -118,6 +118,20 @@ func getAttrValue(attrs map[string]interface{}, path AttributePath) interface{} 
 		return lookupKey(m, path.SubAttribute)
 	}
 	return val
+}
+
+// schemaScope returns the attribute map an attribute qualified with schemaURI
+// lives in: the extension object keyed by the URN when present (e.g.
+// "urn:...:enterprise:2.0:User:department"), otherwise the top-level
+// attributes (core schema attributes are not nested).
+func schemaScope(attrs map[string]interface{}, schemaURI string) map[string]interface{} {
+	if schemaURI == "" {
+		return attrs
+	}
+	if ext, ok := lookupKey(attrs, schemaURI).(map[string]interface{}); ok {
+		return ext
+	}
+	return attrs
 }
 
 func lookupKey(m map[string]interface{}, key string) interface{} {

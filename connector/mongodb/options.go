@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/cerberauth/scimply/schema"
+	"github.com/cerberauth/scimply/store"
 )
 
 // LookupConfig describes a cross-collection join via MongoDB's $lookup aggregation stage.
@@ -34,6 +35,7 @@ type config struct {
 	registry        *schema.Registry
 	timeout         time.Duration
 	resourceConfigs map[string]ResourceCollectionConfig // lowercase resource type -> config
+	maxFilterScan   int
 }
 
 func defaultConfig() config {
@@ -41,10 +43,19 @@ func defaultConfig() config {
 		collPrefix:      "scim_",
 		timeout:         30 * time.Second,
 		resourceConfigs: make(map[string]ResourceCollectionConfig),
+		maxFilterScan:   store.DefaultMaxFilterScan,
 	}
 }
 
 type Option func(*config)
+
+// WithMaxFilterScan bounds the number of documents scanned in-process when a
+// filter cannot be translated to a native query. Lists that would scan more
+// fail with store.ErrTooMany instead of returning wrong results. A value
+// <= 0 disables the bound.
+func WithMaxFilterScan(n int) Option {
+	return func(c *config) { c.maxFilterScan = n }
+}
 
 func WithURI(uri string) Option {
 	return func(c *config) { c.uri = uri }

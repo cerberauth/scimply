@@ -85,7 +85,7 @@ func ErrorFromStoreError(err error) *SCIMError {
 		return NewSCIMError(http.StatusBadRequest, ErrTypeNoTarget, err.Error())
 
 	case errors.Is(err, store.ErrTooMany):
-		return NewSCIMError(http.StatusRequestEntityTooLarge, ErrTypeTooMany, err.Error())
+		return NewSCIMError(http.StatusBadRequest, ErrTypeTooMany, err.Error())
 
 	case errors.Is(err, store.ErrInvalidValue):
 		return NewSCIMError(http.StatusBadRequest, ErrTypeInvalidValue, err.Error())

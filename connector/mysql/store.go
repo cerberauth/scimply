@@ -360,7 +360,15 @@ func (s *Store) listJSONMode(ctx context.Context, resourceType string, params st
 	var args []interface{}
 	if params.Filter != nil {
 		fr := sqlconn.TranslateFilter(params.Filter, m, sqlconn.DialectMySQL, "")
-		if fr.Err == nil && fr.Clause != "" {
+		if fr.Err != nil {
+			// The filter cannot be translated to SQL: scan the table and
+			// filter in-process instead of ignoring the filter.
+			q := fmt.Sprintf(`SELECT id, external_id, meta_created, meta_last_mod, meta_version, data, schemas FROM %s`, backtick(table)) //nolint:gosec // G201: Table name is from internal configuration.
+			return s.listClientFiltered(ctx, q, params, func(rows *sql.Rows) (*resource.Resource, error) {
+				return scanJSONRow(rows, resourceType)
+			})
+		}
+		if fr.Clause != "" {
 			whereParts = append(whereParts, fr.Clause)
 			args = append(args, fr.Args...)
 		}
@@ -418,41 +426,21 @@ func (s *Store) listJSONMode(ctx context.Context, resourceType string, params st
 
 	var resources []*resource.Resource
 	for rows.Next() {
-		var (
-			id, externalID, metaVersion sql.NullString
-			metaCreated, metaLastMod    time.Time
-			data, schemasJSON           []byte
-		)
-		if err := rows.Scan(&id, &externalID, &metaCreated, &metaLastMod, &metaVersion, &data, &schemasJSON); err != nil {
-			return nil, fmt.Errorf("%w: scan row: %v", store.ErrInternal, err)
-		}
-		r, err := jsonBytesToResource(data, schemasJSON)
+		r, err := scanJSONRow(rows, resourceType)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", store.ErrInternal, err)
+			return nil, err
 		}
-		r.ID = id.String
-		if externalID.Valid {
-			r.ExternalID = externalID.String
-		}
-		r.Meta.Created = metaCreated.UTC()
-		r.Meta.LastModified = metaLastMod.UTC()
-		if metaVersion.Valid {
-			r.Meta.Version = metaVersion.String
-		}
-		r.Meta.ResourceType = resourceType
 		resources = append(resources, r)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("%w: rows: %v", store.ErrInternal, err)
 	}
 
-	needsClientFilter := params.Filter != nil && len(whereParts) == 0
 	return &store.ListResult{
-		Resources:         resources,
-		TotalResults:      total,
-		StartIndex:        startIndex,
-		ItemsPerPage:      len(resources),
-		NeedsClientFilter: needsClientFilter,
+		Resources:    resources,
+		TotalResults: total,
+		StartIndex:   startIndex,
+		ItemsPerPage: len(resources),
 	}, nil
 }
 
@@ -464,7 +452,14 @@ func (s *Store) listColumnMode(ctx context.Context, resourceType string, params 
 	var args []interface{}
 	if params.Filter != nil {
 		result := sqlconn.TranslateFilter(params.Filter, m, sqlconn.DialectMySQL, "")
-		if result.Err == nil && result.Clause != "" {
+		if result.Err != nil {
+			// The filter cannot be translated to SQL: scan the table and
+			// filter in-process instead of ignoring the filter.
+			return s.listClientFiltered(ctx, baseQ, params, func(rows *sql.Rows) (*resource.Resource, error) {
+				return scanColumnRows(rows, entries, resourceType)
+			})
+		}
+		if result.Clause != "" {
 			whereParts = append(whereParts, result.Clause)
 			args = append(args, result.Args...)
 		}
@@ -497,7 +492,7 @@ func (s *Store) listColumnMode(ctx context.Context, resourceType string, params 
 			if params.SortOrder == store.SortDescending {
 				dir = "DESC"
 			}
-			col := ref.Column
+			col := backtick(ref.Column)
 			if ref.Table != "" {
 				col = backtick(ref.Table) + "." + backtick(ref.Column)
 			}
@@ -972,4 +967,57 @@ func isDuplicateEntry(err error) bool {
 	}
 	return strings.Contains(err.Error(), "Duplicate entry") ||
 		strings.Contains(err.Error(), "1062")
+}
+
+// scanJSONRow scans a JSON-mode row into a resource.
+func scanJSONRow(rows *sql.Rows, resourceType string) (*resource.Resource, error) {
+	var (
+		id, externalID, metaVersion sql.NullString
+		metaCreated, metaLastMod    time.Time
+		data, schemasJSON           []byte
+	)
+	if err := rows.Scan(&id, &externalID, &metaCreated, &metaLastMod, &metaVersion, &data, &schemasJSON); err != nil {
+		return nil, fmt.Errorf("%w: scan row: %v", store.ErrInternal, err)
+	}
+	r, err := jsonBytesToResource(data, schemasJSON)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", store.ErrInternal, err)
+	}
+	r.ID = id.String
+	if externalID.Valid {
+		r.ExternalID = externalID.String
+	}
+	r.Meta.Created = metaCreated.UTC()
+	r.Meta.LastModified = metaLastMod.UTC()
+	if metaVersion.Valid {
+		r.Meta.Version = metaVersion.String
+	}
+	r.Meta.ResourceType = resourceType
+	return r, nil
+}
+
+// listClientFiltered streams every row returned by q and applies the filter,
+// sorting and pagination in-process. It fails with store.ErrTooMany when
+// more than the configured maximum number of rows would be scanned.
+func (s *Store) listClientFiltered(ctx context.Context, q string, params store.ListParams, scan func(*sql.Rows) (*resource.Resource, error)) (*store.ListResult, error) {
+	rows, err := s.db.QueryContext(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("%w: query: %v", store.ErrInternal, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	cf := store.NewClientFilter(params, s.cfg.maxFilterScan)
+	for rows.Next() {
+		res, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		if err := cf.Add(res); err != nil {
+			return nil, err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%w: rows: %v", store.ErrInternal, err)
+	}
+	return cf.Result(), nil
 }

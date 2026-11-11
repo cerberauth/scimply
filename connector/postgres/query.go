@@ -85,10 +85,10 @@ func (s *Store) buildCountQuery(resourceType string, filter resource.FilterExpre
 	return q, result.Args, nil
 }
 
-func (s *Store) buildFallbackQuery(resourceType string) (string, []interface{}, error) {
-	table := s.tableName(resourceType)
-	q := fmt.Sprintf(`SELECT data FROM %s LIMIT 1000`, quoteIdent(table))
-	return q, nil, nil
+// buildScanQuery selects every row of a resource table, for filters that
+// cannot be translated to SQL and are evaluated in-process.
+func (s *Store) buildScanQuery(resourceType string) (string, []interface{}) {
+	return fmt.Sprintf(`SELECT data FROM %s`, quoteIdent(s.tableName(resourceType))), nil
 }
 
 func generateUUID() (string, error) {
