@@ -3,12 +3,12 @@ module github.com/cerberauth/scimply
 go 1.26.0
 
 require (
-	github.com/cerberauth/x v0.0.0-20261107180155-4a52fa2eefe1
+	github.com/cerberauth/x v0.0.0-20261108232819-0070b4a32173
 	github.com/getargvio/argvio-go v0.6.0
-	github.com/go-sql-driver/mysql v1.10.0
-	github.com/jackc/pgx/v5 v5.9.2
+	github.com/go-sql-driver/mysql v1.10.1
+	github.com/jackc/pgx/v5 v5.12.0
 	github.com/spf13/cobra v1.10.2
-	go.mongodb.org/mongo-driver/v2 v2.6.0
+	go.mongodb.org/mongo-driver/v2 v2.10.0
 	go.opentelemetry.io/contrib/bridges/otelslog v0.21.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0
 	go.opentelemetry.io/otel v1.47.0
@@ -29,11 +29,10 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	github.com/klauspost/compress v1.18.6 // indirect
-	github.com/spf13/pflag v1.0.10 // indirect
-	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
-	github.com/xdg-go/scram v1.2.0 // indirect
+	github.com/jackc/puddle/v2 v2.2.3 // indirect
+	github.com/klauspost/compress v1.20.4 // indirect
+	github.com/spf13/pflag v1.1.0 // indirect
+	github.com/xdg-go/scram v1.4.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
@@ -51,11 +50,11 @@ require (
 	go.opentelemetry.io/proto/otlp v1.11.1 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
-	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
-	golang.org/x/text v0.43.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20261026165753-2ffab32bce7e // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20261026165753-2ffab32bce7e // indirect
+	golang.org/x/sync v0.25.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20261110000943-09e21b237f2c // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261110000943-09e21b237f2c // indirect
 	google.golang.org/grpc v1.85.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
