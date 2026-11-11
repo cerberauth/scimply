@@ -36,8 +36,8 @@ type bulkResponse struct {
 func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 
 	var body map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		protocol.NewSCIMError(http.StatusBadRequest, protocol.ErrTypeInvalidSyntax, "invalid JSON body: "+err.Error()).Write(w)
+	if scimErr := decodeBody(w, r, s.cfg.maxBulkPayload, &body); scimErr != nil {
+		scimErr.Write(w)
 		return
 	}
 
@@ -113,6 +113,13 @@ func (s *Server) executeBulkOp(origReq *http.Request, op resource.BulkOperation)
 		return result
 	}
 
+	if !s.isBulkResourcePath(path) {
+		result.Status = "400"
+		result.Response = errorMap(http.StatusBadRequest, protocol.ErrTypeInvalidPath,
+			"bulk operation path must target a resource endpoint: "+path)
+		return result
+	}
+
 	fullPath := s.cfg.basePath + path
 
 	var bodyReader io.Reader
@@ -176,4 +183,24 @@ func errorMap(status int, scimType protocol.SCIMType, detail string) map[string]
 		m["scimType"] = string(scimType)
 	}
 	return m
+}
+
+// isBulkResourcePath reports whether a bulk operation path targets a resource
+// type endpoint ("/Users" or "/Users/{id}"). Bulk, discovery and .search
+// endpoints are rejected so bulk requests cannot be nested (RFC 7644 §3.7).
+func (s *Server) isBulkResourcePath(path string) bool {
+	if !strings.HasPrefix(path, "/") || strings.ContainsAny(path, "?#") {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) > 2 || parts[0] == "" {
+		return false
+	}
+	if _, ok := s.cfg.registry.ResourceTypeByEndpoint("/" + parts[0]); !ok {
+		return false
+	}
+	if len(parts) == 2 && (parts[1] == "" || strings.HasPrefix(parts[1], ".")) {
+		return false
+	}
+	return true
 }

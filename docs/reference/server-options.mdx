@@ -107,6 +107,18 @@ Caps the page size regardless of what the client requests. Default: `1000`.
 
 Maximum number of operations allowed in a single `POST /Bulk` request. Default: `1000`.
 
+### `WithMaxBulkPayloadSize(n int64)`
+
+Maximum size in bytes of a `POST /Bulk` request body, advertised as `bulk.maxPayloadSize`. Larger requests are rejected with `413`. Default: `1048576`.
+
+Bulk operations may only target resource endpoints (`/Users`, `/Users/{id}`); nested `/Bulk`, discovery and `.search` paths are rejected with `400 invalidPath`.
+
+## Request limits
+
+### `WithMaxBodySize(n int64)`
+
+Maximum size in bytes of a request body for non-bulk requests. Larger requests are rejected with `413`. Default: `1048576`.
+
 ## Logging
 
 ### `WithLogger(l *slog.Logger)`

@@ -110,6 +110,8 @@ func runServe(cmd *cobra.Command, configFile, version, commit, date string) erro
 		server.WithDefaultPageSize(cfg.Server.DefaultPageSize),
 		server.WithMaxPageSize(cfg.Server.MaxPageSize),
 		server.WithMaxBulkOps(cfg.Server.MaxBulkOps),
+		server.WithMaxBodySize(cfg.Server.MaxBodySize),
+		server.WithMaxBulkPayloadSize(cfg.Server.MaxBulkPayloadSize),
 	}
 	opts = append(opts, authOpts...)
 

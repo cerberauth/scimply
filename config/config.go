@@ -45,14 +45,17 @@ type ServerConfig struct {
 	// BaseURL is the public absolute URL of the SCIM root used in Location
 	// headers and meta.location (e.g. "https://idp.example.com/scim/v2").
 	// When empty it is derived from the request Host header.
-	BaseURL         string    `yaml:"base_url"`
-	ReadTimeout     Duration  `yaml:"read_timeout"`
-	WriteTimeout    Duration  `yaml:"write_timeout"`
-	ShutdownTimeout Duration  `yaml:"shutdown_timeout"`
-	DefaultPageSize int       `yaml:"default_page_size"`
-	MaxPageSize     int       `yaml:"max_page_size"`
-	MaxBulkOps      int       `yaml:"max_bulk_ops"`
-	TLS             TLSConfig `yaml:"tls"`
+	BaseURL         string   `yaml:"base_url"`
+	ReadTimeout     Duration `yaml:"read_timeout"`
+	WriteTimeout    Duration `yaml:"write_timeout"`
+	ShutdownTimeout Duration `yaml:"shutdown_timeout"`
+	DefaultPageSize int      `yaml:"default_page_size"`
+	MaxPageSize     int      `yaml:"max_page_size"`
+	MaxBulkOps      int      `yaml:"max_bulk_ops"`
+	// MaxBodySize and MaxBulkPayloadSize are in bytes; 0 uses the server default (1 MiB).
+	MaxBodySize        int64     `yaml:"max_body_size"`
+	MaxBulkPayloadSize int64     `yaml:"max_bulk_payload_size"`
+	TLS                TLSConfig `yaml:"tls"`
 }
 
 type TLSConfig struct {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -23,8 +24,8 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request, resourceTy
 		attribute.String("scim.operation", "create"),
 	)
 	var body map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		protocol.NewSCIMError(http.StatusBadRequest, protocol.ErrTypeInvalidSyntax, "invalid JSON body: "+err.Error()).Write(w)
+	if scimErr := decodeBody(w, r, s.cfg.maxBodySize, &body); scimErr != nil {
+		scimErr.Write(w)
 		return
 	}
 
@@ -86,7 +87,13 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request, resourceType
 
 	if r.Method == http.MethodPost && r.Body != nil {
 		var body map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+		scimErr := decodeBody(w, r, s.cfg.maxBodySize, &body)
+		if scimErr != nil && httpStatus(scimErr) == http.StatusRequestEntityTooLarge {
+			s.logAudit(r, audit.OperationList, resourceType, "", http.StatusRequestEntityTooLarge)
+			scimErr.Write(w)
+			return
+		}
+		if scimErr == nil {
 			bodyVals := bodyToURLValues(body)
 			bodyParams := protocol.ParseListParamsFromValues(bodyVals)
 
@@ -170,8 +177,8 @@ func (s *Server) handleReplace(w http.ResponseWriter, r *http.Request, resourceT
 		attribute.String("scim.resource_id", id),
 	)
 	var body map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		protocol.NewSCIMError(http.StatusBadRequest, protocol.ErrTypeInvalidSyntax, "invalid JSON body: "+err.Error()).Write(w)
+	if scimErr := decodeBody(w, r, s.cfg.maxBodySize, &body); scimErr != nil {
+		scimErr.Write(w)
 		return
 	}
 
@@ -207,8 +214,8 @@ func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request, resourceTyp
 		attribute.String("scim.resource_id", id),
 	)
 	var body map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		protocol.NewSCIMError(http.StatusBadRequest, protocol.ErrTypeInvalidSyntax, "invalid JSON body: "+err.Error()).Write(w)
+	if scimErr := decodeBody(w, r, s.cfg.maxBodySize, &body); scimErr != nil {
+		scimErr.Write(w)
 		return
 	}
 
@@ -299,4 +306,21 @@ func bodyToURLValues(body map[string]interface{}) url.Values {
 		}
 	}
 	return vals
+}
+
+// decodeBody decodes a JSON request body, rejecting bodies larger than limit
+// with 413 Payload Too Large (RFC 7644 §3.7.4).
+func decodeBody(w http.ResponseWriter, r *http.Request, limit int64, dest interface{}) *protocol.SCIMError {
+	if limit > 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
+	}
+	if err := json.NewDecoder(r.Body).Decode(dest); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			return protocol.NewSCIMError(http.StatusRequestEntityTooLarge, "",
+				fmt.Sprintf("request body exceeds maximum size of %d bytes", maxErr.Limit))
+		}
+		return protocol.NewSCIMError(http.StatusBadRequest, protocol.ErrTypeInvalidSyntax, "invalid JSON body: "+err.Error())
+	}
+	return nil
 }
