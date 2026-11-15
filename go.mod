@@ -3,7 +3,7 @@ module github.com/cerberauth/scimply
 go 1.27.3
 
 require (
-	github.com/cerberauth/x v0.0.0-20261108232819-0070b4a32173
+	github.com/cerberauth/x v0.0.0-20261115155959-c025fc3e303d
 	github.com/getargvio/argvio-go v0.6.0
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/jackc/pgx/v5 v5.13.0
