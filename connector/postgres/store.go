@@ -135,7 +135,9 @@ func (s *Store) createJSONMode(ctx context.Context, resourceType string, res *re
 		return nil, fmt.Errorf("%w: generate id: %v", store.ErrInternal, err)
 	}
 
-	now := time.Now().UTC()
+	// The stored JSON keeps meta timestamps to the second (RFC 3339), so
+	// return what a later read will see.
+	now := time.Now().UTC().Truncate(time.Second)
 	clone := res.Clone()
 	clone.ID = id
 	clone.Meta.ResourceType = resourceType
