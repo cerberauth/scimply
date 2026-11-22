@@ -1,6 +1,8 @@
 ---
 title: Filtering
 description: Query SCIM resources using RFC 7644 filter expressions.
+sidebar:
+  order: 1
 ---
 
 scimply includes a recursive-descent filter parser that implements the full RFC 7644 ABNF grammar. Filters are parsed server-side and passed to the store as a `resource.FilterExpression`.
