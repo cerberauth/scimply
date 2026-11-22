@@ -1,6 +1,8 @@
 ---
-title: Getting started
+title: Build your first SCIM server
 description: Build a SCIM 2.0 server in Go with scimply and the in-memory backend.
+sidebar:
+  order: 1
 ---
 
 This guide walks through the minimal setup to get a SCIM 2.0 server running. It uses the in-memory backend, which is suitable for development and testing.
@@ -78,6 +80,6 @@ curl http://localhost:8080/scim/v2/ServiceProviderConfig \
 
 ## Next steps
 
-- [Filtering](./filtering/) — query users with RFC 7644 filter expressions
-- [PATCH operations](./patch-operations/) — partial resource updates
+- [Filtering](../concepts/filtering/) — query users with RFC 7644 filter expressions
+- [PATCH operations](../concepts/patch-operations/) — partial resource updates
 - [Custom store](./custom-store/) — connect a real database

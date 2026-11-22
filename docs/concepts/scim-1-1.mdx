@@ -1,6 +1,8 @@
 ---
-title: SCIM 1.1
+title: Support SCIM 1.1 clients
 description: Serve SCIM 1.1 clients using the scimply conversion layer.
+sidebar:
+  order: 3
 ---
 
 The `v1` package converts between SCIM 1.1 wire format and the internal SCIM 2.0 representation. Resources are translated at the boundary, so the rest of the library (store, filter, PATCH engine) operates on 2.0 objects throughout.
